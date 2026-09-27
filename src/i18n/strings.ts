@@ -142,6 +142,10 @@ const en = {
   datasets: 'Datasets (CSV download)',
   serverShared: 'Shared server',
   serverLocal: 'Demo server in this browser only',
+  chooseRole: 'Who are you?',
+  roleCollector: 'I collect scrap (kabadiwala)',
+  roleRecycler: 'I run a recycling facility',
+  changeRole: 'Change role',
 };
 
 export type StringKey = keyof typeof en;
@@ -289,6 +293,10 @@ const hi: Dict = {
   datasets: 'डेटासेट (CSV डाउनलोड)',
   serverShared: 'साझा सर्वर',
   serverLocal: 'डेमो सर्वर सिर्फ़ इस ब्राउज़र में',
+  chooseRole: 'आप कौन हैं?',
+  roleCollector: 'मैं कबाड़ इकट्ठा करता/करती हूँ (कबाड़ीवाला)',
+  roleRecycler: 'मैं रीसाइक्लिंग इकाई चलाता/चलाती हूँ',
+  changeRole: 'भूमिका बदलें',
 };
 
 const mr: Dict = {
@@ -433,6 +441,10 @@ const mr: Dict = {
   datasets: 'डेटासेट (CSV डाउनलोड)',
   serverShared: 'सामायिक सर्व्हर',
   serverLocal: 'डेमो सर्व्हर फक्त या ब्राउझरमध्ये',
+  chooseRole: 'तुम्ही कोण आहात?',
+  roleCollector: 'मी भंगार गोळा करतो/करते (भंगारवाला)',
+  roleRecycler: 'मी रिसायकलिंग केंद्र चालवतो/चालवते',
+  changeRole: 'भूमिका बदला',
 };
 
 export const STRINGS: Record<Language, Dict> = { en, hi, mr };

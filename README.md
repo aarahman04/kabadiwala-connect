@@ -1,5 +1,7 @@
 # Kabadiwala Connect (SIH26229)
 
+> **New session / new contributor? Read [docs/README.md](docs/README.md) first.**
+
 Offline-first PWA for informal e-waste collectors: photograph and price a lot, find authorized recyclers, and record a verifiable handover. Supports Hindi, Marathi and English.
 
 ## Run
@@ -9,7 +11,9 @@ npm install
 npm run dev            # http://localhost:5173 (no service worker in dev)
 npm test               # logic unit tests + full offline→sync flow test
 npm run build && npm run preview          # production build on http://localhost:4173, service worker active
-npm run dev:server     # API on http://localhost:8787 (memory store; set DATA_FILE or DATABASE_URL to persist)
+npm run dev:backend    # API on http://localhost:8787 (memory store; set DATA_FILE or DATABASE_URL to persist)
+npm run build:backend  # REQUIRED after changing backend/ or shared server code: backend/dist/server.mjs is committed
+npm run db:sql         # regenerate database/NN_*.sql from backend/src/schema.ts
 VITE_API_URL=http://localhost:8787 npm run dev   # client against the real API
 ```
 
@@ -38,62 +42,16 @@ Without `VITE_API_URL`, the app uses a **mock server inside the browser** (local
 | `GET /api/export/<dataset>.csv\|json` | `materials prices recyclers transactions traceability collectors flags audit` |
 | `POST /api/admin/reset` | wipe to seed data; needs `Authorization: Bearer $ADMIN_TOKEN` |
 
-### Deploying the backend (Railway) and pointing the app at it
+### Deploying
 
-1. **Railway:** New Project → Deploy from GitHub repo (`kabadiwala-connect`). `railway.json` sets the build command (`npm run build:server`), the start command (`npm run start:server`) and the health check (`/api/health`).
-2. **Railway:** add a **Postgres** database to the same project.
-3. **Railway, on the API service's Variables:**
-   - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`. That is the private-network URL, so no TLS is needed.
-   - `ADMIN_TOKEN` = any secret, for the reset endpoint.
-   - Optionally `CORS_ORIGIN` = your Vercel URL; the default is `*`.
-4. **Railway:** Settings → Networking → Generate Domain.
-   - Check `https://<api-domain>/api/health` shows `"store":"postgres"`.
-5. **Vercel:** Project → Settings → Environment Variables → `VITE_API_URL` = `https://<api-domain>` (no trailing slash).
-6. **Vercel:** **redeploy.** Vite bakes the variable in at build time, so an existing deployment won't pick it up.
-7. **Check:** in the app, **Recycler view** shows "🌐 Shared server". It says "💻 Demo server in this browser only" when the variable is missing.
-8. Reset server data before the demo:
+Full steps are in **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. In short:
 
-   ```bash
-   curl -X POST https://<api-domain>/api/admin/reset -H "Authorization: Bearer $ADMIN_TOKEN"
-   ```
-
-   The in-app **Reset demo data** button only clears that phone.
-
-## Getting it onto the demo phone
-
-Offline cold-start needs a **service worker**, and a service worker needs a **secure context**. Options, best first:
-
-1. **USB port forwarding (recommended, no certificate issues).** Run `npm run build && npm run preview` on the laptop. Plug the Android phone in over USB with USB debugging on. In desktop Chrome, open `chrome://inspect/#devices`, enable **Port forwarding**, and map `4173` to `localhost:4173`. On the phone, open `http://localhost:4173`. Chrome treats `localhost` as secure, so the service worker installs. Load the app once; after that it works with the cable out and airplane mode on.
-2. **Deploy to any HTTPS host.** `dist/` is a static site (for example, Vercel). This is the only option that works on phones without a laptop.
-3. **Chrome flag.** On the phone, open `chrome://flags/#unsafely-treat-insecure-origin-as-secure` and add `http://<laptop-LAN-IP>:4173`. On the laptop, run `npx vite preview --host`.
-
-⚠️ `npm run preview:phone` uses a self-signed HTTPS certificate. It serves the pages, but **Chrome refuses to register a service worker on an origin with a certificate error, even after you click through the warning.** Offline cold-reload won't work that way, so use it only for camera and GPS checks. I haven't tested this on a phone; it's standard Chrome behaviour.
-
-## Demo script — tested in real Chrome
-
-I ran this click by click in real desktop Chrome (headless, 390×844 viewport) against `npm run preview`. The run used the real service worker, a real network cutoff, an offline cold reload and real IndexedDB photo blobs. GPS was tested three ways: granted, denied, and a prompt that was never answered. Labels below are English. **The app starts in Hindi on first launch.** Tap **English** in the header, or demo in Hindi (बेचें = Sell, कमाई = Earnings).
-
-**Setup:** open the app once **while online** so it gets cached. If it isn't a fresh install, tap **Reset demo data** at the bottom of Home.
-
-1. Turn on **airplane mode**. The header shows 🔴 Offline. (On a laptop, tick **Demo: simulate offline** instead.)
-2. *(Optional)* Pull to refresh. The app still loads, from cache.
-3. Tap **Sell** in the bottom bar, then **📷 Take photo**. Take the picture, then tap **Continue →**.
-4. Tap the **Wires & cables** tile, then tap **+1**. The weight goes from 5 to 6 kg and the ₹ estimate updates live. Tap **Estimated value →**.
-5. The valuation screen shows the photo, the ₹ estimate, the market range and a 60-day trend (cable ▲ about 8%). Tap **🔊 Hear price**.
-6. Tap **Find authorized recyclers**. You should see 6 authorized recyclers and a note saying 2 unauthorized or pending buyers are hidden. **Manewada Scrap Mart** shows the ⚠️ below-market badge. Tap **Choose** on the top recycler.
-7. Tap **📷 Take photo** for the handover photo. Wait for "📍 Location captured" or "GPS unavailable — approximate location used" (10 seconds at most). Tap **Create handover record**.
-8. The big `KC-XXXXXX` code appears with ⏳ *Waiting for recycler confirmation* and "💾 Saved on phone". The header shows "N waiting to sync". Tap **🔊 Read code aloud**.
-9. Tap **← Home**, then **♻️ Recycler view** at the bottom. Stay offline and in the same browser.
-   - Type the code (case and dash don't matter) and tap **Look up**. You should see "✅ Record fingerprint verified" with the category, weight and photos.
-   - Payment defaults to **Cash**. Tap **Confirm handover**. You should see "💾 Confirmation saved…".
-10. Tap **Switch to collector app** and open the lot on Home. It still shows ⏳ *Awaiting confirmation*, which is correct while offline.
-11. Turn airplane mode **off**. **Sync starts by itself** on reconnect; **Sync now** is only a backup. Within 2–5 seconds the lot flips to ✅ *Confirmed by …* with **Paid ₹…**, and the header shows "All synced".
-12. Tap **Earnings**. The new entry shows ✅ Received and the totals have updated. Optionally show **Prices** (7 rows with trend lines) and **Safety** (5 cards, each with 🔊).
-
-Results from that run:
-- The offline cold reload worked.
-- The recycler lookup verified the hash.
-- After reconnecting, the transaction went from `handed_over` to `confirmed`, and the ledger entry from `pending` to `settled`.
+- **Railway:** Root Directory = `backend`. It deploys the prebuilt `backend/dist/server.mjs` with its own `package.json` and `railway.json`.
+- **Supabase:** run `database/01_users.sql` … `12_seed_prices.sql` in order in the SQL editor. Then give Railway these variables:
+  - `DATABASE_URL`: the Session pooler URI
+  - `DATABASE_SSL=require`
+  - `DATABASE_CA`: Supabase's CA certificate
+- **Vercel:** set `VITE_API_URL=https://<railway-domain>`, then redeploy.
 
 ## Two-phone demo (needs the shared backend)
 
@@ -139,7 +97,9 @@ Tested with two separate Chrome profiles against the built server; they share no
 | `src/logic/*.ts` | Pure, tested functions: `ranking`, `valuation`, `anomaly`, `hashing`, `sync`, `geo` |
 | `src/services/api.ts` | The only network module: real HTTP backend when `VITE_API_URL` is set, else in-browser mock |
 | `src/services/serverCore.ts` | Backend rules (validation, hash re-check, confirmations, anomaly flags, audit), shared by mock and server |
-| `server/` | Node API (`app.ts` routes + CSV export, `store.ts` Postgres/file/memory persistence), bundled by `npm run build:server` |
+| `backend/` | Deployable API folder (Railway root dir): `src/app.ts` routes + CSV export, `src/store.ts` Postgres/file/memory persistence, `src/schema.ts` SQL source; `dist/server.mjs` is the committed bundle |
+| `database/` | Numbered SQL files for the Supabase SQL editor (01 users → 12 seed prices) + `13_useful_queries.sql` |
+| `docs/` | Handoff docs: progress, architecture, data model, deployment, decisions — **start here in a new session** |
 | `src/data/recyclerLookup.ts` | Recycler-side data: code lookup, final-price check, worklist, rate publishing |
 | `src/hooks/*` | `useLots`, `useLot`, `useRecyclers`, `usePrices`, `useLedger`, `useSyncQueue` |
 | `src/screens/*` | Screens that render from typed props and callbacks only |

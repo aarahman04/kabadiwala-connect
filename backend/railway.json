@@ -1,10 +1,10 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "buildCommand": "npm run build:server"
+    "buildCommand": "echo 'prebuilt: dist/server.mjs'"
   },
   "deploy": {
-    "startCommand": "npm run start:server",
+    "startCommand": "npm start",
     "healthcheckPath": "/api/health",
     "restartPolicyType": "ON_FAILURE"
   }

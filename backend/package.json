@@ -1,0 +1,16 @@
+{
+  "name": "kabadiwala-connect-backend",
+  "private": true,
+  "version": "0.2.0",
+  "description": "Kabadiwala Connect API. dist/server.mjs is prebuilt from the repo root (npm run build:backend); this folder deploys on its own.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "start": "node dist/server.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.23.0"
+  }
+}

@@ -4,5 +4,5 @@
     "types": ["node", "vite/client"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["server", "src/services/serverCore.ts"]
+  "include": ["backend/src", "src/services/serverCore.ts"]
 }

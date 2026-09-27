@@ -10,10 +10,10 @@
     "preview": "vite preview",
     "preview:phone": "vite preview --host --mode https",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.server.json",
-    "build:server": "rolldown server/index.ts --file server/dist/index.mjs --platform node --format esm --external pg",
-    "start:server": "node server/dist/index.mjs",
-    "dev:server": "npm run build:server && node --env-file-if-exists=.env server/dist/index.mjs"
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.backend.json",
+    "build:backend": "rolldown backend/src/index.ts --file backend/dist/server.mjs --platform node --format esm --external pg",
+    "dev:backend": "npm run build:backend && node --env-file-if-exists=.env backend/dist/server.mjs",
+    "db:sql": "rolldown backend/src/gen-sql.ts --file node_modules/.cache/kc/gen-sql.mjs --platform node --format esm && node node_modules/.cache/kc/gen-sql.mjs"
   },
   "dependencies": {
     "idb": "^8.0.3",

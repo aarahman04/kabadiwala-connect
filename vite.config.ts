@@ -31,6 +31,6 @@ export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss(), serviceWorkerPlugin(), ...(mode === 'https' ? [basicSsl()] : [])],
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts', 'server/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'backend/src/**/*.test.ts'],
   },
 }));

@@ -6,9 +6,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createApp } from './app';
-import { MemoryStore } from './store';
-import type { MaterialLot, TraceabilityRecord, Transaction } from '../src/data/models';
-import { computeHandoverHash, referenceFromHash } from '../src/logic/hashing';
+import { MemoryStore, PostgresStore, type Store } from './store';
+
+// Set KC_TEST_DATABASE_URL to run this whole suite against real Postgres.
+const PG_URL = process.env.KC_TEST_DATABASE_URL;
+const makeStore = (): Store => (PG_URL ? new PostgresStore(PG_URL) : new MemoryStore());
+import type { MaterialLot, TraceabilityRecord, Transaction } from '../../src/data/models';
+import { computeHandoverHash, referenceFromHash } from '../../src/logic/hashing';
 
 const storage = new Map<string, string>();
 Object.assign(globalThis, {
@@ -20,13 +24,13 @@ Object.assign(globalThis, {
 });
 Object.defineProperty(globalThis.navigator, 'onLine', { get: () => true, configurable: true });
 
-const api = await import('../src/services/api');
+const api = await import('../../src/services/api');
 
 let server: Server;
 let base: string;
 
 beforeAll(async () => {
-  server = createServer(createApp({ store: new MemoryStore(), adminToken: 't0ken' }));
+  server = createServer(createApp({ store: makeStore(), adminToken: 't0ken' }));
   await new Promise<void>((r) => server.listen(0, r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   api.setApiBase(base);
@@ -60,7 +64,7 @@ describe('backend over HTTP', () => {
     expect((await api.fetchRecyclers()).length).toBe(10);
     expect((await api.fetchPrices()).length).toBe(38);
     const health = await (await fetch(`${base}/api/health`)).json();
-    expect(health).toMatchObject({ ok: true, store: 'memory' });
+    expect(health).toMatchObject({ ok: true, store: PG_URL ? 'postgres' : 'memory' });
   });
 
   it('collector phone → server → recycler phone → server → collector phone', async () => {
@@ -119,6 +123,14 @@ describe('backend over HTTP', () => {
     expect((await api.lookupHandover(record.handoverReference))?.flag?.reason).toBe('below_market');
   });
 
+  it.runIf(!!PG_URL)('state survives a server restart (fresh store reads the tables back)', async () => {
+    const reloaded = await new PostgresStore(PG_URL!).load();
+    expect(Object.keys(reloaded.lots).length).toBeGreaterThanOrEqual(2);
+    expect(Object.values(reloaded.traceability).some((r) => r.status === 'confirmed')).toBe(true);
+    expect(Object.keys(reloaded.flags).length).toBeGreaterThanOrEqual(1);
+    expect(reloaded.audit.length).toBeGreaterThan(5);
+  });
+
   it('recycler rate update feeds the recycler and price datasets', async () => {
     await api.pushOp({ kind: 'updateRecyclerRates', recyclerId: 'rc-04', offeredRates: { PCB: 150 }, at: Date.now() });
     const r = (await api.fetchRecyclers()).find((x) => x.recyclerId === 'rc-04')!;
@@ -149,7 +161,7 @@ describe('backend over HTTP', () => {
 
   it('unreachable server surfaces as offline, not a server rejection', async () => {
     api.setApiBase('http://127.0.0.1:9');
-    const { OfflineError } = await import('../src/logic/sync');
+    const { OfflineError } = await import('../../src/logic/sync');
     await expect(api.fetchRecyclers()).rejects.toBeInstanceOf(OfflineError);
     api.setApiBase(base);
   });

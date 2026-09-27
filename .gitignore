@@ -2,5 +2,6 @@ node_modules
 dist
 *.local
 *.tsbuildinfo
-server/dist
+node_modules/.cache
 .env
+!backend/dist/

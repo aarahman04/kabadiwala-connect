@@ -12,6 +12,7 @@ import {
   type IncomingHandover,
 } from './data/recyclerLookup';
 import { startSyncTriggers } from './data/syncRunner';
+import { getSetting, setSetting } from './data/db';
 import { Header } from './components/Header';
 import { useCollector } from './hooks/useCollector';
 import { useLedger } from './hooks/useLedger';
@@ -34,6 +35,7 @@ import { NewLot, type NewLotResult } from './screens/NewLot';
 import { PriceBoard } from './screens/PriceBoard';
 import { RecyclerConfirm } from './screens/RecyclerConfirm';
 import { RecyclerDesk } from './screens/RecyclerDesk';
+import { RoleChooser, type AppRole } from './screens/RoleChooser';
 import { RecyclerMatch, type MatchRow } from './screens/RecyclerMatch';
 import { Safety } from './screens/Safety';
 import { Valuation } from './screens/Valuation';
@@ -50,7 +52,11 @@ type Route =
   | { name: 'ledger' }
   | { name: 'safety' };
 
-const isRecyclerRole = () => new URLSearchParams(window.location.search).get('role') === 'recycler';
+/** ?role=recycler|collector in the URL overrides the saved choice (handy for demos and links). */
+const roleFromUrl = (): AppRole | undefined => {
+  const r = new URLSearchParams(window.location.search).get('role');
+  return r === 'recycler' || r === 'collector' ? r : undefined;
+};
 
 export default function App() {
   const { profile, error } = useCollector();
@@ -69,15 +75,28 @@ export default function App() {
 function Shell({ collectorId }: { collectorId: string }) {
   const { t } = useI18n();
   const sync = useSyncQueue();
-  const [recyclerRole, setRecyclerRole] = useState(isRecyclerRole);
+  // undefined = still loading; null = never chosen (show the chooser).
+  const [role, setRole] = useState<AppRole | null | undefined>(roleFromUrl);
 
-  const switchRole = (toRecycler: boolean) => {
+  useEffect(() => {
+    if (role !== undefined) return;
+    void getSetting<AppRole>('role').then((saved) => setRole(saved ?? null));
+  }, [role]);
+
+  const chooseRole = (next: AppRole) => {
     const url = new URL(window.location.href);
-    if (toRecycler) url.searchParams.set('role', 'recycler');
-    else url.searchParams.delete('role');
-    window.history.pushState({}, '', url);
-    setRecyclerRole(toRecycler);
+    if (url.searchParams.has('role')) {
+      url.searchParams.delete('role');
+      window.history.replaceState({}, '', url);
+    }
+    void setSetting('role', next);
+    setRole(next);
   };
+  const switchRole = (toRecycler: boolean) => chooseRole(toRecycler ? 'recycler' : 'collector');
+
+  if (role === undefined) return <p className="p-4">…</p>;
+  if (role === null) return <RoleChooser onChoose={chooseRole} />;
+  const recyclerRole = role === 'recycler';
 
   return (
     <div className="app mx-auto flex min-h-screen max-w-md flex-col">

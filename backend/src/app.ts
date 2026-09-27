@@ -5,7 +5,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createHash } from 'node:crypto';
-import type { SyncOp } from '../src/data/models';
+import type { SyncOp } from '../../src/data/models';
 import {
   applyOp,
   handoverByReference,
@@ -14,7 +14,7 @@ import {
   updatesFor,
   ValidationError,
   type ServerState,
-} from '../src/services/serverCore';
+} from '../../src/services/serverCore';
 import type { Store } from './store';
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -111,8 +111,9 @@ export function createApp({ store, corsOrigin = '*', adminToken }: AppOptions) {
           return json(res, 403, { error: 'forbidden' });
         }
         await exclusive(async () => {
-          state = initialServerState();
-          await store.save(state);
+          const fresh = initialServerState();
+          await (store.reset ? store.reset(fresh) : store.save(fresh));
+          state = fresh;
         });
         return json(res, 200, { ok: true });
       }
