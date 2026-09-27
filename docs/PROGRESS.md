@@ -101,3 +101,58 @@ Also fixed: a write made during an in-flight sync waited for the next trigger; `
 | Per-location price board | Single city (Nagpur) seed data |
 | Field research, unit economics, AI data description | **Team deliverables, not code.** `database/13_useful_queries.sql` #11 is a unit-economics scaffold |
 | Real recycler directory | Seed recyclers are fictional. Replace with the CPCB/MPCB authorized recycler list |
+
+
+## Visual design pass — 2026-09-28 (Codex)
+
+Completed the collector and recycler visual redesign. Protected logic/data/services/hooks/backend/classifier/database files have no diff. Existing props, callbacks and QA class hooks remain. This is a local commit; no deployment or push was requested.
+
+### Verification
+
+- `npm run build` and `npm run typecheck`: pass. `npm test`: **46 passed, 1 skipped** (the existing 45 active tests plus one presentation regression test; the database-dependent test remains skipped).
+- Chrome at **360 × 800**, en/hi/mr: **72 screen/language checks**, including photo upload, category, optional chips, weight, valuation/audio action, authorized match, offline pickup, accepted/on-the-way/arriving timeline, handover, fingerprint verification, abnormal-price warning, cash confirmation, earnings, prices, safety, rate publishing and actual offline reload. No horizontal overflow, page errors or external asset requests.
+- **15 final layout checks** cover the updated SVG wordmark, facility header, home, receipt and safety across all languages. Desktop app width checked at 1280 px: centered 448 px. Reduced-motion mode checked.
+- Both WOFF2 fonts and the 512 px maskable icon were confirmed in the service-worker cache. JavaScript: **89.97 KB gzip**, up **9.05 KB** from the 80.92 KB baseline, below the 60 KB addition budget. Fonts total 146.02 KB, cached locally.
+- Main text/background contrast ratios: ink/paper 11.24:1, muted/paper 5.71:1, white/teal 11.73:1, action text/marigold 6.64:1, warning text/background 7.13:1.
+- Emoji search is clean in presentation and translation source. One existing emoji remains in protected `src/data/seed.ts`; generated placeholder SVGs are rendered as bundled circuit-board artwork, so it is not visible.
+- Browser scripts, reports and screenshots are available locally in ignored `node_modules/.cache/design/`. Physical Android camera, installed Hindi/Marathi TTS voices, classifier predictions and the deployed two-phone backend remain outside this local visual verification.
+
+### Changed files
+
+- `src/index.css`: Added design tokens, bundled fonts, responsive screen styles, 48/56 px controls and reduced-motion support.
+- `src/App.tsx`: Replaced navigation/role-action emoji, added loading skeletons and the selected facility header; routing and callbacks unchanged.
+- `src/i18n/strings.ts`: Removed emoji in en/hi/mr, preserved placeholders and added translated presentation copy and pictogram identifiers.
+- `src/components/ui/Icon.tsx`: Added a small selected Lucide SVG vocabulary with a shared stroke and size.
+- `src/components/ui/CategoryIcon.tsx`: Added seven distinct material SVG silhouettes.
+- `src/components/ui/Brand.tsx`: Added the SVG logo, translated SVG wordmark and two role illustrations.
+- `src/components/ui/SafetyPictogram.tsx`: Added five safety scenes with prohibition marks or protective equipment.
+- `src/components/ui/index.tsx`: Added Button, Card, StatusPill, Stat, Stepper, SegmentedControl, EmptyState, Skeleton and Banner.
+- `src/components/ui/presentation.test.ts`: Added one runnable regression check for translations, icon/status coverage, button semantics and progress cues.
+- `src/components/BlobImage.tsx`: Displays generated SVG placeholders as bundled circuit artwork, keeping the protected seed untouched.
+- `src/components/CategoryGrid.tsx`: Uses distinct material SVG icons and shared native buttons.
+- `src/components/Header.tsx`: Added compact branding, language segments, sync status and a settings disclosure containing the original offline checkbox.
+- `src/components/PhotoInput.tsx`: Added camera framing guidance, an icon action and its loading state.
+- `src/components/WeightStepper.tsx`: Uses shared controls and a translated reset accessible label.
+- `src/screens/RoleChooser.tsx`: Added the branded introduction and illustrated collector/recycler choices.
+- `src/screens/Home.tsx`: Added an introductory panel, marigold new-lot action and icon-plus-word lot statuses.
+- `src/screens/NewLot.tsx`: Added the three-step progress display, material icons, condition/source icons and classification loading treatment.
+- `src/screens/Valuation.tsx`: Added the dark teal value card, high-contrast audio action and consistent navigation.
+- `src/screens/RecyclerMatch.tsx`: Added best-match styling, authorization, distance/pickup icons and amber anomaly treatment.
+- `src/screens/Handover.tsx`: Added timestamped pickup steps, ticket receipt, prominent code, fingerprint details and payment/status cues.
+- `src/screens/Ledger.tsx`: Added earnings statistics and readable payment/transaction statuses.
+- `src/screens/PriceBoard.tsx`: Added material and audio cues with consistent market rows and sparklines.
+- `src/screens/Safety.tsx`: Replaced the five emoji with SVG safety pictograms and retained the audio actions.
+- `src/screens/RecyclerConfirm.tsx`: Styled code lookup, fingerprint checks, anomaly feedback, native payment radios and confirmation feedback.
+- `src/screens/RecyclerDesk.tsx`: Styled the pickup inbox, incoming handovers, rate editor and loading/empty states.
+- `src/assets/material-placeholder.svg`: Added locally bundled circuit-board placeholder artwork.
+- `public/icon.svg`: Replaced the initial icon with the new two-way K mark.
+- `public/icon-192.png`: Added a maskable app icon with the mark inside the safe area.
+- `public/icon-512.png`: Added the larger maskable app icon.
+- `public/manifest.json`: Updated app colors and SVG/PNG icon declarations.
+- `index.html`: Updated the theme color and PNG touch icon.
+- `vite.config.ts`: Added both PNG icons to the existing app-shell precache.
+- `package.json`: Added only lucide-react and the two locally bundled variable font packages.
+- `package-lock.json`: Locked the icon/font dependencies; install reported zero vulnerabilities.
+- `docs/DESIGN-PLAN.md`: Recorded the palette, type, layout, signature and verification plan.
+- `docs/DESIGN-GUIDE.md`: Documented the new presentation components, preserved hooks, offline assets and verification.
+- `docs/PROGRESS.md`: Recorded this design handoff without changing earlier session notes.

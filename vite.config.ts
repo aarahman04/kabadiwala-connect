@@ -16,7 +16,7 @@ function serviceWorkerPlugin(): Plugin {
     apply: 'build',
     generateBundle(_options, bundle) {
       const assets = Object.keys(bundle).map((file) => '/' + file);
-      const precache = [...new Set(['/', '/index.html', '/manifest.json', '/icon.svg', ...assets])];
+      const precache = [...new Set(['/', '/index.html', '/manifest.json', '/icon.svg', '/icon-192.png', '/icon-512.png', ...assets])];
       const source = readFileSync(resolve(import.meta.dirname, 'service-worker.js'), 'utf8')
         .replace('self.__PRECACHE__', JSON.stringify(precache))
         .replace('__BUILD_ID__', Date.now().toString(36));

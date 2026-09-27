@@ -1,3 +1,5 @@
+import { Button, Icon, SegmentedControl } from './ui';
+import { Brand } from './ui/Brand';
 import type { Language } from '../data/models';
 import type { SyncStatus } from '../data/syncRunner';
 import { LANGUAGE_NAMES } from '../i18n/strings';
@@ -16,11 +18,13 @@ export function Header({ title, sync, pendingCount, onSyncNow, simulatedOffline,
   const { t, lang, setLang, formatDateTime } = useI18n();
   return (
     <header className="app-header border-b p-3">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="app-title text-lg font-bold">{title}</h1>
-        <div className="language-toggle flex gap-1" role="group" aria-label={t('language')}>
+      <div className="header-identity">
+        <h1 className="app-title" aria-label={title}>
+          <Brand />
+        </h1>
+        <SegmentedControl className="language-toggle" aria-label={t('language')}>
           {(Object.keys(LANGUAGE_NAMES) as Language[]).map((l) => (
-            <button
+            <Button
               key={l}
               type="button"
               className={`btn chip ${l === lang ? 'is-selected font-bold underline' : ''}`}
@@ -28,20 +32,28 @@ export function Header({ title, sync, pendingCount, onSyncNow, simulatedOffline,
               onClick={() => setLang(l)}
             >
               {LANGUAGE_NAMES[l]}
-            </button>
+            </Button>
           ))}
-        </div>
+        </SegmentedControl>
       </div>
       <div className="sync-bar mt-2 flex flex-wrap items-center gap-2 text-sm">
         <span className={`connection-badge ${sync.online ? 'is-online' : 'is-offline'}`}>
-          {sync.online ? `🟢 ${t('online')}` : `🔴 ${t('offline')}`}
+          <Icon name={sync.online ? 'online' : 'offline'} />
+          {sync.online ? t('online') : t('offline')}
         </span>
         <span className="queue-count">
           {pendingCount > 0 ? t('pendingSync', { count: pendingCount }) : t('allSynced')}
         </span>
-        <button type="button" className="btn btn-secondary" disabled={sync.syncing || !sync.online} onClick={onSyncNow}>
+        <Button
+          type="button"
+          icon="refresh"
+          loading={sync.syncing}
+          className="btn btn-secondary sync-button"
+          disabled={sync.syncing || !sync.online}
+          onClick={onSyncNow}
+        >
           {sync.syncing ? t('syncing') : t('syncNow')}
-        </button>
+        </Button>
         {sync.lastSyncAt && (
           <span className="last-sync opacity-70">{t('lastSynced', { time: formatDateTime(sync.lastSyncAt) })}</span>
         )}
@@ -50,15 +62,23 @@ export function Header({ title, sync, pendingCount, onSyncNow, simulatedOffline,
             {sync.lastResult.confirmed > 0 ? t('syncDone', sync.lastResult) : t('syncSent', sync.lastResult)}
           </span>
         )}
-        {sync.lastError && <span className="sync-error text-red-700">{t('errorGeneric', { message: sync.lastError })}</span>}
-        <label className="simulate-offline ml-auto flex items-center gap-1">
-          <input
-            type="checkbox"
-            checked={simulatedOffline}
-            onChange={(e) => onToggleSimulatedOffline(e.target.checked)}
-          />
-          {t('simulateOffline')}
-        </label>
+        {sync.lastError && (
+          <span className="sync-error text-red-700">{t('errorGeneric', { message: sync.lastError })}</span>
+        )}
+        <details className="demo-settings">
+          <summary aria-label={t('settings')}>
+            <Icon name="settings" />
+            <span className="sr-only">{t('settings')}</span>
+          </summary>
+          <label className="simulate-offline flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={simulatedOffline}
+              onChange={(e) => onToggleSimulatedOffline(e.target.checked)}
+            />
+            {t('simulateOffline')}
+          </label>
+        </details>
       </div>
     </header>
   );

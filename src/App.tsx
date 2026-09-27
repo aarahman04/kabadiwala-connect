@@ -1,3 +1,5 @@
+import { Button, Icon, Skeleton } from './components/ui';
+import type { IconName } from './components/ui/Icon';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MaterialCategory, MaterialLot } from './data/models';
 import { requestPickup, resetLocalData, updatePickup } from './data/actions';
@@ -67,7 +69,7 @@ export default function App() {
   useEffect(() => startSyncTriggers(), []);
 
   if (error) return <p className="p-4 text-red-700">{error}</p>;
-  if (!profile) return <p className="p-4">…</p>;
+  if (!profile) return <Skeleton className="app-loading" />;
 
   return (
     <I18nProvider initial={profile.preferredLanguage}>
@@ -98,7 +100,7 @@ function Shell({ collectorId }: { collectorId: string }) {
   };
   const switchRole = (toRecycler: boolean) => chooseRole(toRecycler ? 'recycler' : 'collector');
 
-  if (role === undefined) return <p className="p-4">…</p>;
+  if (role === undefined) return <Skeleton className="app-loading" />;
   if (role === null) return <RoleChooser onChoose={chooseRole} />;
   const recyclerRole = role === 'recycler';
 
@@ -175,6 +177,18 @@ function RecyclerApp({ online, onSwitchToCollector }: { online: boolean; onSwitc
 
   return (
     <>
+      {me && (
+        <div className="facility-identity operator-header">
+          <Icon name="factory" />
+          <div>
+            <strong>{me.name}</strong>
+            <p>
+              <Icon name="shield" />
+              {t('authorized')}
+            </p>
+          </div>
+        </div>
+      )}
       <RecyclerConfirm
         key={picked ?? 'manual'}
         online={online}
@@ -246,7 +260,7 @@ function CollectorApp({ collectorId, onSwitchToRecycler }: { collectorId: string
       ...lotFields,
       photoThumbnail,
       aiSuggestion: aiSuggestion && {
-        label: aiSuggestion.raw.class === 'Other' ? aiSuggestion.raw.best_guess ?? 'Other' : aiSuggestion.raw.class,
+        label: aiSuggestion.raw.class === 'Other' ? (aiSuggestion.raw.best_guess ?? 'Other') : aiSuggestion.raw.class,
         confidence: aiSuggestion.confidence,
         uncertain: aiSuggestion.raw.uncertain,
         model: aiSuggestion.raw.model ?? 'unknown',
@@ -264,12 +278,12 @@ function CollectorApp({ collectorId, onSwitchToRecycler }: { collectorId: string
     window.location.reload();
   }
 
-  const tabs: { route: Route; label: string; icon: string }[] = [
-    { route: { name: 'home' }, label: t('navHome'), icon: '🏠' },
-    { route: { name: 'new' }, label: t('navNewLot'), icon: '➕' },
-    { route: { name: 'prices' }, label: t('navPrices'), icon: '📈' },
-    { route: { name: 'ledger' }, label: t('navLedger'), icon: '💰' },
-    { route: { name: 'safety' }, label: t('navSafety'), icon: '⛑️' },
+  const tabs: { route: Route; label: string; icon: IconName }[] = [
+    { route: { name: 'home' }, label: t('navHome'), icon: 'home' },
+    { route: { name: 'new' }, label: t('navNewLot'), icon: 'plus' },
+    { route: { name: 'prices' }, label: t('navPrices'), icon: 'trend' },
+    { route: { name: 'ledger' }, label: t('navLedger'), icon: 'wallet' },
+    { route: { name: 'safety' }, label: t('navSafety'), icon: 'shield' },
   ];
 
   return (
@@ -277,18 +291,14 @@ function CollectorApp({ collectorId, onSwitchToRecycler }: { collectorId: string
       <main className="flex-1 pb-20">
         {route.name === 'home' && (
           <>
-            <Home
-              lots={lots}
-              onNewLot={() => go({ name: 'new' })}
-              onOpenLot={(lotId) => go({ name: 'lot', lotId })}
-            />
+            <Home lots={lots} onNewLot={() => go({ name: 'new' })} onOpenLot={(lotId) => go({ name: 'lot', lotId })} />
             <div className="flex flex-col items-center gap-2 p-3 text-sm">
-              <button type="button" className="btn btn-link" onClick={onSwitchToRecycler}>
-                ♻️ {t('switchToRecycler')}
-              </button>
-              <button type="button" className="btn btn-link opacity-60" onClick={() => void resetDemo()}>
-                {t('resetDemo')}
-              </button>
+              <Button type="button" className="btn btn-link" onClick={onSwitchToRecycler}>
+                <Icon name="factory" /> {t('switchToRecycler')}
+              </Button>
+              <Button type="button" className="btn btn-link opacity-60" onClick={() => void resetDemo()}>
+                <Icon name="refresh" /> {t('resetDemo')}
+              </Button>
             </div>
           </>
         )}
@@ -348,19 +358,23 @@ function CollectorApp({ collectorId, onSwitchToRecycler }: { collectorId: string
         )}
       </main>
 
-      <nav className="bottom-nav fixed bottom-0 left-0 right-0 mx-auto grid max-w-md grid-cols-5 border-t bg-white">
+      <nav
+        aria-label={t('navHome')}
+        className="bottom-nav fixed bottom-0 left-0 right-0 mx-auto grid max-w-md grid-cols-5 border-t bg-white"
+      >
         {tabs.map((tab) => (
-          <button
+          <Button
             key={tab.route.name}
             type="button"
             className={`nav-tab flex flex-col items-center py-2 text-xs ${route.name === tab.route.name ? 'is-active font-bold' : ''}`}
+            aria-current={route.name === tab.route.name ? 'page' : undefined}
             onClick={() => go(tab.route)}
           >
             <span className="text-xl" aria-hidden="true">
-              {tab.icon}
+              <Icon name={tab.icon} />
             </span>
             {tab.label}
-          </button>
+          </Button>
         ))}
       </nav>
     </>
@@ -411,7 +425,7 @@ function LotFlow({
     }));
   }, [lot, recyclers, board]);
 
-  if (loading) return <p className="p-4">…</p>;
+  if (loading) return <Skeleton className="app-loading" />;
   if (!lot) return <p className="p-4">{t('errorGeneric', { message: lotId })}</p>;
 
   if (current === 'valuation') {
@@ -508,7 +522,11 @@ function LotFlow({
         });
       }}
       onSpeakCode={(code) =>
-        speak(t('spokenCode', { code: spellCode(code) }), lang, translate('en', 'spokenCode', { code: spellCode(code) }))
+        speak(
+          t('spokenCode', { code: spellCode(code) }),
+          lang,
+          translate('en', 'spokenCode', { code: spellCode(code) }),
+        )
       }
       onMarkPaid={(method) => void markPaid(lot.lotId, method)}
       onChangeRecycler={() => onStep('match')}

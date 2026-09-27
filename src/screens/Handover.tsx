@@ -1,5 +1,13 @@
+import { Button, Icon, Banner, Stepper, StatusPill } from '../components/ui';
 import { useRef, useState } from 'react';
-import type { MaterialLot, PaymentStatus, PickupStatus, Recycler, TraceabilityRecord, Transaction } from '../data/models';
+import type {
+  MaterialLot,
+  PaymentStatus,
+  PickupStatus,
+  Recycler,
+  TraceabilityRecord,
+  Transaction,
+} from '../data/models';
 import { BlobImage } from '../components/BlobImage';
 import { PhotoInput } from '../components/PhotoInput';
 import { TX_STATUS_NAMES } from '../i18n/strings';
@@ -46,7 +54,7 @@ export function Handover(props: Props) {
           {!position ? t('gettingLocation') : position.approximate ? t('locationApprox') : t('locationOk')}
         </p>
         {error && <p className="text-red-700">{t('errorGeneric', { message: error })}</p>}
-        <button
+        <Button
           type="button"
           className="btn btn-primary w-full py-4 text-lg"
           disabled={!photo || !position || busy}
@@ -63,11 +71,12 @@ export function Handover(props: Props) {
             }
           }}
         >
+          <Icon name={busy ? 'loading' : 'fingerprint'} />
           {busy ? '…' : t('createHandover')}
-        </button>
-        <button type="button" className="btn btn-link" onClick={props.onChangeRecycler}>
-          ← {t('back')}
-        </button>
+        </Button>
+        <Button type="button" className="btn btn-link" onClick={props.onChangeRecycler}>
+          <Icon name="back" /> {t('back')}
+        </Button>
       </section>
     );
   }
@@ -78,38 +87,64 @@ export function Handover(props: Props) {
   return (
     <section className="screen handover-receipt flex flex-col gap-3 p-3">
       <div className="handover-code-card rounded border-2 p-4 text-center">
+        <Icon name="fingerprint" className="receipt-seal" />
         <div className="text-sm">{t('handoverCode')}</div>
-        <div className="handover-code font-mono text-5xl font-bold tracking-widest">{record.handoverReference}</div>
+        <div className="handover-code font-mono text-5xl font-bold tracking-widest">
+          <span className="code-prefix">{record.handoverReference.slice(0, 3)}</span>
+          <span className="code-value">{record.handoverReference.slice(3)}</span>
+        </div>
         <div className="mt-1 text-sm">{t('showCodeToRecycler')}</div>
-        <button
+        <Button
           type="button"
           className="btn btn-secondary mt-3 w-full py-3"
           onClick={() => props.onSpeakCode(record.handoverReference)}
         >
-          {t('speakCode')}
-        </button>
+          <Icon name="audio" /> {t('speakCode')}
+        </Button>
       </div>
 
-      <div className={`confirmation-status rounded p-3 font-bold ${confirmed ? 'is-confirmed bg-green-100' : 'is-pending bg-yellow-100'}`}>
-        {confirmed
-          ? `✅ ${t('confirmedBy', { name: record.recyclerConfirmation?.confirmedBy ?? recyclerName })}`
-          : `⏳ ${t('pendingConfirmation')}`}
+      <div
+        className={`confirmation-status rounded p-3 font-bold ${confirmed ? 'is-confirmed bg-green-100' : 'is-pending bg-yellow-100'}`}
+      >
+        {confirmed ? (
+          <>
+            <Icon name="shield" />{' '}
+            {t('confirmedBy', {
+              name: record.recyclerConfirmation?.confirmedBy ?? recyclerName,
+            })}
+          </>
+        ) : (
+          <>
+            <Icon name="clock" /> {t('pendingConfirmation')}
+          </>
+        )}
         <div className="text-sm font-normal">
-          {t('statusLabel')}: {TX_STATUS_NAMES[lang][transaction.transactionStatus]}
-          {paid && ` · ${t('paid')} ₹${formatNumber(transaction.finalPrice ?? transaction.quotedPrice)}`}
+          {t('statusLabel')}:{' '}
+          <StatusPill status={transaction.transactionStatus}>
+            {TX_STATUS_NAMES[lang][transaction.transactionStatus]}
+          </StatusPill>
+          {paid && (
+            <div className="paid-amount">
+              <Icon name="cash" />
+              {t('paid')} ₹{formatNumber(transaction.finalPrice ?? transaction.quotedPrice)}
+            </div>
+          )}
         </div>
       </div>
       {props.priceFlag && (
         <div className="anomaly-badge rounded bg-yellow-100 p-2 text-sm font-bold" role="alert">
-          {t(FLAG_KEYS[props.priceFlag.reason], { pct: props.priceFlag.deviationPct })}
+          <Icon name="warning" />{' '}
+          {t(FLAG_KEYS[props.priceFlag.reason], {
+            pct: props.priceFlag.deviationPct,
+          })}
         </div>
       )}
       {transaction.pickup && transaction.pickup.status !== 'completed' && !confirmed && (
         <p className={`pickup-status status-${transaction.pickup.status} font-bold`}>
-          {t(`pickup_${transaction.pickup.status}`)}
+          <StatusPill status={transaction.pickup.status}>{t(`pickup_${transaction.pickup.status}`)}</StatusPill>
         </p>
       )}
-      {hasUnsyncedChanges && <p className="offline-note text-sm">💾 {t('savedOffline')}</p>}
+      {hasUnsyncedChanges && <Banner className="offline-note">{t('savedOffline')}</Banner>}
 
       <dl className="record-details grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
         <dt>{t('weight')}</dt>
@@ -135,21 +170,23 @@ export function Handover(props: Props) {
 
       {!paid && (
         <div className="payment-actions flex gap-2">
-          <button type="button" className="btn btn-primary flex-1 py-3" onClick={() => props.onMarkPaid('paid_cash')}>
-            {t('cashReceived')}
-          </button>
-          <button type="button" className="btn btn-secondary flex-1 py-3" onClick={() => props.onMarkPaid('paid_digital')}>
-            {t('digitalReceived')}
-          </button>
+          <Button type="button" className="btn btn-primary flex-1 py-3" onClick={() => props.onMarkPaid('paid_cash')}>
+            <Icon name="cash" /> {t('cashReceived')}
+          </Button>
+          <Button
+            type="button"
+            className="btn btn-secondary flex-1 py-3"
+            onClick={() => props.onMarkPaid('paid_digital')}
+          >
+            <Icon name="digital" /> {t('digitalReceived')}
+          </Button>
         </div>
       )}
 
-      <p className="text-xs opacity-60">
-        {lot.lotId}
-      </p>
-      <button type="button" className="btn btn-link" onClick={props.onBack}>
-        ← {t('navHome')}
-      </button>
+      <p className="text-xs opacity-60">{lot.lotId}</p>
+      <Button type="button" className="btn btn-link" onClick={props.onBack}>
+        <Icon name="back" /> {t('navHome')}
+      </Button>
     </section>
   );
 }
@@ -157,7 +194,7 @@ export function Handover(props: Props) {
 /** Ask the recycler to come, then follow their progress; or drop off yourself. */
 function PickupPanel(props: Props & { recyclerName: string }) {
   const { transaction, recycler, recyclerName, pickupQueued } = props;
-  const { t } = useI18n();
+  const { t, formatDateTime } = useI18n();
   const [phone, setPhone] = useState('');
   const sending = useRef(false);
   const pickup = transaction.pickup;
@@ -168,7 +205,7 @@ function PickupPanel(props: Props & { recyclerName: string }) {
   if (!pickup || status === 'declined') {
     return (
       <div className="pickup-panel flex flex-col gap-2 rounded border p-3">
-        {status === 'declined' && <p className="font-bold">{t('pickup_declined')}</p>}
+        {status === 'declined' && <StatusPill status="declined">{t('pickup_declined')}</StatusPill>}
         <label className="flex flex-col text-sm">
           {t('phoneOptional')}
           <input
@@ -180,7 +217,7 @@ function PickupPanel(props: Props & { recyclerName: string }) {
             onChange={(e) => setPhone(e.target.value.replace(/[^\d+ ]/g, ''))}
           />
         </label>
-        <button
+        <Button
           type="button"
           className="btn btn-primary w-full py-3 text-lg"
           onClick={async () => {
@@ -193,8 +230,8 @@ function PickupPanel(props: Props & { recyclerName: string }) {
             }
           }}
         >
-          {t('requestPickup')}
-        </button>
+          <Icon name="truck" /> {t('requestPickup')}
+        </Button>
         <p className="text-sm">{t('dropOffSelf')}</p>
       </div>
     );
@@ -203,19 +240,27 @@ function PickupPanel(props: Props & { recyclerName: string }) {
   return (
     <div className={`pickup-panel pickup-${status} flex flex-col gap-2 rounded border p-3`}>
       <p className="pickup-status text-lg font-bold" aria-live="polite">
-        {t(`pickup_${status!}`)}
+        <StatusPill status={status!}>{t(`pickup_${status!}`)}</StatusPill>
       </p>
-      <ol className="pickup-steps flex gap-1 text-xs">
-        {(['requested', 'accepted', 'on_the_way', 'arriving'] as const).map((s) => (
-          <li key={s} className={`step flex-1 rounded p-1 ${pickup.history.some((h) => h.status === s) ? 'is-done font-bold' : 'opacity-50'}`}>
-            {t(`pickup_${s}`).split(' ')[0]}
-          </li>
-        ))}
-      </ol>
-      {pickupQueued && <p className="text-sm">💾 {t('pickupQueued')}</p>}
+      <Stepper
+        className="pickup-steps"
+        items={(['requested', 'accepted', 'on_the_way', 'arriving'] as const).map((s) => ({
+          label: t(`pickup_${s}`),
+          icon: s === 'on_the_way' ? 'truck' : s === 'arriving' ? 'location' : s === 'accepted' ? 'check' : 'clock',
+          done: pickup.history.some((h) => h.status === s),
+          detail: pickup.history.find((h) => h.status === s)
+            ? formatDateTime(pickup.history.find((h) => h.status === s)!.at)
+            : undefined,
+        }))}
+      />
+      {pickupQueued && (
+        <p className="text-sm">
+          <Icon name="save" /> {t('pickupQueued')}
+        </p>
+      )}
       {status !== 'requested' && recycler.contact && (
         <a className="btn btn-secondary py-2 text-center" href={`tel:${recycler.contact.replace(/\s/g, '')}`}>
-          {t('callName', { name: recyclerName })}
+          <Icon name="phone" /> {t('callName', { name: recyclerName })}
         </a>
       )}
     </div>

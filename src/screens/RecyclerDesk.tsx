@@ -1,8 +1,9 @@
+import { Button, Icon, StatusPill, Skeleton, EmptyState } from '../components/ui';
+import { CategoryIcon } from '../components/ui/CategoryIcon';
 import { useEffect, useRef, useState } from 'react';
 import type { MaterialCategory, Recycler } from '../data/models';
 import { MATERIAL_CATEGORIES } from '../data/models';
 import type { IncomingHandover, PickupInboxItem } from '../data/recyclerLookup';
-import { CATEGORY_ICONS } from '../i18n/strings';
 import { useI18n } from '../i18n/I18nProvider';
 
 interface Props {
@@ -27,7 +28,10 @@ export function RecyclerDesk(props: Props) {
 
   return (
     <section className="screen recycler-desk flex flex-col gap-3 p-3">
-      <p className="server-mode text-xs opacity-70">{props.sharedServer ? `🌐 ${t('serverShared')}` : `💻 ${t('serverLocal')}`}</p>
+      <p className="server-mode text-xs opacity-70">
+        <Icon name={props.sharedServer ? 'online' : 'building'} />
+        {props.sharedServer ? t('serverShared') : t('serverLocal')}
+      </p>
 
       <label className="flex flex-col text-sm">
         {t('facility')}
@@ -52,16 +56,17 @@ export function RecyclerDesk(props: Props) {
           <div className="incoming flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <h3 className="font-bold">{t('incoming')}</h3>
-              <button type="button" className="btn chip" onClick={props.onRefreshIncoming}>
-                ↻ {t('refresh')}
-              </button>
+              <Button type="button" className="btn chip" onClick={props.onRefreshIncoming}>
+                <Icon name="refresh" /> {t('refresh')}
+              </Button>
             </div>
+            {incoming === undefined && <Skeleton />}
             {incoming === null && <p className="text-sm">{t('incomingNeedsServer')}</p>}
-            {incoming?.length === 0 && <p className="text-sm">{t('noIncoming')}</p>}
+            {incoming?.length === 0 && <EmptyState>{t('noIncoming')}</EmptyState>}
             <ul className="flex flex-col gap-2">
               {incoming?.map((h) => (
                 <li key={h.reference}>
-                  <button
+                  <Button
                     type="button"
                     className="incoming-card flex w-full items-center gap-2 rounded border p-2 text-left"
                     onClick={() => props.onPickHandover(h.reference)}
@@ -70,14 +75,20 @@ export function RecyclerDesk(props: Props) {
                     <div className="flex-1">
                       <div className="font-mono font-bold">{h.reference}</div>
                       <div className="text-sm">
-                        {h.category && `${CATEGORY_ICONS[h.category]} ${categoryName(h.category)} · `}
+                        {h.category && (
+                          <>
+                            <CategoryIcon category={h.category} /> {categoryName(h.category)} ·{' '}
+                          </>
+                        )}
                         {formatNumber(h.weight, 1)} {t('kg')}
                         {h.quotedPrice != null && ` · ₹${formatNumber(h.quotedPrice)}`}
                       </div>
                       <div className="text-xs opacity-70">{formatDateTime(h.timestamp)}</div>
                     </div>
-                    <span className="text-lg">{h.confirmed ? '✅' : '⏳'}</span>
-                  </button>
+                    <StatusPill status={h.confirmed ? 'confirmed' : 'pending'}>
+                      {t(h.confirmed ? 'confirmationSent' : 'pending')}
+                    </StatusPill>
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -134,21 +145,30 @@ function RateEditor({ recycler, onSave }: { recycler: Recycler; onSave: Props['o
       <div className="mt-2 grid grid-cols-2 gap-2">
         {MATERIAL_CATEGORIES.map((c) => (
           <label key={c} className="flex flex-col text-xs">
-            {CATEGORY_ICONS[c]} {categoryName(c)}
+            <CategoryIcon category={c} /> {categoryName(c)}
             <input
               className="rounded border p-1 text-base"
               inputMode="decimal"
               value={draft[c] ?? ''}
               placeholder="—"
-              onChange={(e) => setDraft({ ...draft, [c]: e.target.value.replace(/[^\d.]/g, '') })}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  [c]: e.target.value.replace(/[^\d.]/g, ''),
+                })
+              }
             />
           </label>
         ))}
       </div>
-      <button type="button" className="btn btn-primary mt-2 w-full py-2" onClick={() => void save()}>
-        {t('saveRates')}
-      </button>
-      {saved && <p className="mt-1 text-sm">✅ {t('ratesSaved')}</p>}
+      <Button type="button" className="btn btn-primary mt-2 w-full py-2" onClick={() => void save()}>
+        <Icon name="save" /> {t('saveRates')}
+      </Button>
+      {saved && (
+        <p className="mt-1 text-sm">
+          <Icon name="check" /> {t('ratesSaved')}
+        </p>
+      )}
     </details>
   );
 }
@@ -169,17 +189,18 @@ function PickupInbox({ requests, onUpdate }: { requests: Props['requests']; onUp
   return (
     <div className="pickup-inbox flex flex-col gap-2">
       <h3 className="font-bold">
-        🚚 {t('pickupRequests')} {requests && requests.length > 0 && `(${requests.length})`}
+        <Icon name="truck" /> {t('pickupRequests')} {requests && requests.length > 0 && `(${requests.length})`}
       </h3>
+      {requests === undefined && <Skeleton />}
       {requests === null && <p className="text-sm">{t('incomingNeedsServer')}</p>}
-      {requests?.length === 0 && <p className="text-sm">{t('noRequests')}</p>}
+      {requests?.length === 0 && <EmptyState icon="truck">{t('noRequests')}</EmptyState>}
       {requests?.map((r) => (
         <article key={r.transactionId} className={`pickup-request status-${r.status} rounded border p-2`}>
           <div className="flex items-center gap-2">
             {r.thumbnail && <img src={r.thumbnail} alt="" className="h-14 w-14 rounded object-cover" />}
             <div className="flex-1">
               <div className="font-bold">
-                {r.category && `${CATEGORY_ICONS[r.category]} `}
+                {r.category && <CategoryIcon category={r.category} />}
                 {t('requestSummary', {
                   category: r.category ? categoryName(r.category) : '—',
                   weight: formatNumber(r.weight ?? 0, 1),
@@ -187,7 +208,9 @@ function PickupInbox({ requests, onUpdate }: { requests: Props['requests']; onUp
                 })}
               </div>
               <div className="text-xs opacity-70">{formatDateTime(r.requestedAt)}</div>
-              <div className="text-sm">{t(`pickup_${r.status}`)}</div>
+              <div className="text-sm">
+                <StatusPill status={r.status}>{t(`pickup_${r.status}`)}</StatusPill>
+              </div>
             </div>
           </div>
           <div className="mt-2 flex flex-wrap gap-2 text-sm">
@@ -197,34 +220,46 @@ function PickupInbox({ requests, onUpdate }: { requests: Props['requests']; onUp
               target="_blank"
               rel="noreferrer"
             >
-              {t('openMap')}
+              <Icon name="location" /> {t('openMap')}
             </a>
             {r.contactPhone && (
               <a className="btn chip" href={`tel:${r.contactPhone.replace(/\s/g, '')}`}>
-                {t('callCollector')}
+                <Icon name="phone" /> {t('callCollector')}
               </a>
             )}
           </div>
           <div className="mt-2 flex gap-2">
             {r.status === 'requested' && (
               <>
-                <button type="button" className="btn btn-primary flex-1 py-2" onClick={() => void act(r.transactionId, 'accepted')}>
-                  {t('accept')}
-                </button>
-                <button type="button" className="btn flex-1 py-2" onClick={() => void act(r.transactionId, 'declined')}>
-                  {t('decline')}
-                </button>
+                <Button
+                  type="button"
+                  className="btn btn-primary flex-1 py-2"
+                  onClick={() => void act(r.transactionId, 'accepted')}
+                >
+                  <Icon name="check" /> {t('accept')}
+                </Button>
+                <Button type="button" className="btn flex-1 py-2" onClick={() => void act(r.transactionId, 'declined')}>
+                  <Icon name="close" /> {t('decline')}
+                </Button>
               </>
             )}
             {r.status === 'accepted' && (
-              <button type="button" className="btn btn-primary flex-1 py-2" onClick={() => void act(r.transactionId, 'on_the_way')}>
-                {t('onMyWay')}
-              </button>
+              <Button
+                type="button"
+                className="btn btn-primary flex-1 py-2"
+                onClick={() => void act(r.transactionId, 'on_the_way')}
+              >
+                <Icon name="truck" /> {t('onMyWay')}
+              </Button>
             )}
             {r.status === 'on_the_way' && (
-              <button type="button" className="btn btn-primary flex-1 py-2" onClick={() => void act(r.transactionId, 'arriving')}>
-                {t('arrivingSoon')}
-              </button>
+              <Button
+                type="button"
+                className="btn btn-primary flex-1 py-2"
+                onClick={() => void act(r.transactionId, 'arriving')}
+              >
+                <Icon name="location" /> {t('arrivingSoon')}
+              </Button>
             )}
           </div>
           {r.status === 'arriving' && <p className="mt-1 text-sm">{t('verifyAtPickup')}</p>}

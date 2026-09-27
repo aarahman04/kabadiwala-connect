@@ -94,3 +94,24 @@ npm run build      # must pass (TypeScript)
 - The "Demo: simulate offline" checkbox shows the offline states.
 
 When done, add one line per changed file to `docs/PROGRESS.md`.
+
+## Implemented visual system (2026-09-28)
+
+Tokens are in `src/index.css` under `@theme`: deep teal, marigold, warm paper, semantic warning/danger, shared radii and elevation. Manrope and Noto Sans Devanagari are bundled as two WOFF2 files and precached. Screens remain centered at 448 px and are checked at 360 px in all three languages.
+
+`src/components/ui/` contains presentation-only components:
+
+- `Button`: native button props and handlers, primary/secondary/ghost/danger variants, md/lg sizes, optional icon and loading state.
+- `Card`, `Stat`, `StatusPill`: consistent surfaces, earnings figures, and icon-plus-word status cues.
+- `Stepper`: photo/material/weight progress and pickup history with full translated labels and timestamps.
+- `SegmentedControl`: wrapper for the existing language buttons and payment radio controls.
+- `Banner`, `EmptyState`, `Skeleton`: calm offline notes, empty lists and loading placeholders.
+- `Icon`: selected Lucide SVGs with a consistent stroke; `CategoryIcon`: seven distinct material silhouettes.
+- `Brand`: SVG mark and translated SVG wordmark; `RoleIllustration`: collector cart and recycler facility.
+- `SafetyPictogram`: cable burning, battery damage, CRT breakage, acid treatment, gloves and mask illustrations.
+
+All original QA class hooks remain. The simulated-offline checkbox is inside the header's settings disclosure. Payment controls remain native radios. The reference's `KC-` prefix and six characters are visually stacked, but `.handover-code.textContent` still contains the full unchanged reference.
+
+`BlobImage` renders generated SVG photo placeholders with bundled circuit-board artwork. This keeps the legacy seed emoji out of the UI without editing protected data. Camera captures remain unchanged. Maskable PNGs at 192/512 px are committed, and `vite.config.ts` adds them to the existing precache list.
+
+Validation: `npm run build`, `npm run typecheck`, `npm test`; 72 production-browser screen/language checks including the complete pickup and handover flow, plus 15 final layout checks after the last brand/console changes. No horizontal overflow at 360 px or external asset requests. Phone camera, installed speech voices, and the deployed two-device backend still need physical-device checks.

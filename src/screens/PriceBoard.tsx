@@ -1,7 +1,8 @@
+import { Button, Icon } from '../components/ui';
+import { CategoryIcon } from '../components/ui/CategoryIcon';
 import type { MaterialCategory, PriceEntry } from '../data/models';
 import { MATERIAL_CATEGORIES } from '../data/models';
 import { Sparkline } from '../components/Sparkline';
-import { CATEGORY_ICONS } from '../i18n/strings';
 import { useI18n } from '../i18n/I18nProvider';
 import { priceTrend, type PriceBoard as Board } from '../logic/valuation';
 
@@ -21,7 +22,7 @@ export function PriceBoard({ board, prices, onSpeak }: Props) {
         const row = board[c];
         if (!row) return null;
         return (
-          <button
+          <Button
             key={c}
             type="button"
             className="price-row flex items-center justify-between gap-2 rounded border p-2 text-left"
@@ -29,20 +30,24 @@ export function PriceBoard({ board, prices, onSpeak }: Props) {
           >
             <div>
               <div className="font-bold">
-                {CATEGORY_ICONS[c]} {categoryName(c)}
+                <CategoryIcon category={c} /> {categoryName(c)}
               </div>
               <div className="text-lg">{t('pricePerKg', { price: formatNumber(row.pricePerUnit, 2) })}</div>
               <div className="text-xs">
-                {t('marketRange', { low: formatNumber(row.marketRangeLow), high: formatNumber(row.marketRangeHigh) })}
+                {t('marketRange', {
+                  low: formatNumber(row.marketRangeLow),
+                  high: formatNumber(row.marketRangeHigh),
+                })}
               </div>
             </div>
             <div className="flex flex-col items-end">
+              <Icon name="audio" />
               <Sparkline points={priceTrend(prices, c)} width={100} height={30} />
               <span className="text-xs">
                 {row.changePct >= 0 ? '▲' : '▼'} {formatNumber(Math.abs(row.changePct), 1)}%
               </span>
             </div>
-          </button>
+          </Button>
         );
       })}
     </section>

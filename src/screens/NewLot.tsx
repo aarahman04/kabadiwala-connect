@@ -1,3 +1,6 @@
+import { Button, Icon, Stepper, Skeleton } from '../components/ui';
+import type { IconName } from '../components/ui/Icon';
+import { CategoryIcon } from '../components/ui/CategoryIcon';
 import { useEffect, useRef, useState } from 'react';
 import type { MaterialCategory } from '../data/models';
 import { CategoryGrid } from '../components/CategoryGrid';
@@ -68,20 +71,28 @@ export function NewLot({ board, onClassify, onComplete, onCancel }: Props) {
 
   return (
     <section className="screen new-lot-screen flex flex-col gap-3 p-3">
-      <div className="step-indicator text-sm">{['photo', 'category', 'weight'].indexOf(step) + 1} / 3</div>
+      <Stepper
+        className="step-indicator"
+        current={['photo', 'category', 'weight'].indexOf(step)}
+        items={[
+          { label: t('stepPhoto'), icon: 'camera' },
+          { label: t('stepMaterial'), icon: 'package' },
+          { label: t('stepWeight'), icon: 'rupee' },
+        ]}
+      />
 
       {step === 'photo' && (
         <>
           <h2 className="text-xl font-bold">{t('step1Photo')}</h2>
           <PhotoInput photo={photo} onChange={setPhoto} takeLabel={t('takePhoto')} retakeLabel={t('retakePhoto')} />
           {photo ? (
-            <button type="button" className="btn btn-primary w-full py-3" onClick={() => setStep('category')}>
-              {t('continue')} →
-            </button>
+            <Button type="button" className="btn btn-primary w-full py-3" onClick={() => setStep('category')}>
+              {t('continue')} <Icon name="next" />
+            </Button>
           ) : (
-            <button type="button" className="btn btn-link" onClick={() => setStep('category')}>
+            <Button type="button" className="btn btn-link" onClick={() => setStep('category')}>
               {t('skipPhoto')}
-            </button>
+            </Button>
           )}
         </>
       )}
@@ -89,16 +100,22 @@ export function NewLot({ board, onClassify, onComplete, onCancel }: Props) {
       {step === 'category' && (
         <>
           <h2 className="text-xl font-bold">{t('step2Category')}</h2>
-          {classifying && <p className="ai-status text-sm">{t('aiIdentifying')}</p>}
+          {classifying && (
+            <div className="ai-status" role="status">
+              <Icon name="sparkle" />
+              {t('aiIdentifying')}
+              <Skeleton />
+            </div>
+          )}
           {suggestion?.verdict === 'match' && suggestion.category && (
             <div className="ai-suggestion rounded border-2 p-3">
               <p className="font-bold">
                 {t('aiLooksLike', {
-                  category: `${CATEGORY_ICONS[suggestion.category]} ${categoryName(suggestion.category)}`,
+                  category: categoryName(suggestion.category),
                   pct: formatNumber(suggestion.confidence * 100),
                 })}
               </p>
-              <button
+              <Button
                 type="button"
                 className="btn btn-primary mt-2 w-full py-3 text-lg"
                 onClick={() => {
@@ -106,12 +123,14 @@ export function NewLot({ board, onClassify, onComplete, onCancel }: Props) {
                   setStep('weight');
                 }}
               >
-                {t('aiConfirm')}
-              </button>
+                <Icon name="check" /> {t('aiConfirm')}
+              </Button>
             </div>
           )}
           {suggestion?.verdict === 'unsure' && <p className="ai-suggestion text-sm">{t('aiUnsure')}</p>}
-          {suggestion?.verdict === 'not_ewaste' && <p className="ai-suggestion text-sm font-bold">{t('aiNotEwaste')}</p>}
+          {suggestion?.verdict === 'not_ewaste' && (
+            <p className="ai-suggestion text-sm font-bold">{t('aiNotEwaste')}</p>
+          )}
           <CategoryGrid
             selected={category ?? (suggestion?.verdict === 'match' ? suggestion.category : undefined)}
             nameOf={categoryName}
@@ -126,7 +145,7 @@ export function NewLot({ board, onClassify, onComplete, onCancel }: Props) {
       {step === 'weight' && category && (
         <>
           <h2 className="text-xl font-bold">
-            {CATEGORY_ICONS[category]} {t('step3Weight')}
+            <CategoryIcon category={category} /> {t('step3Weight')}
           </h2>
           <WeightStepper value={weight} onChange={setWeight} unitLabel={t('kg')} />
           {/* Optional, one tap each — feeds the Material dataset's condition / source type. */}
@@ -135,19 +154,29 @@ export function NewLot({ board, onClassify, onComplete, onCancel }: Props) {
             options={LOT_CONDITIONS}
             selected={condition}
             onSelect={setCondition}
-            render={(c) => `${LOT_ICONS[c]} ${t(`condition_${c}`)}`}
+            render={(c) => (
+              <>
+                <Icon name={LOT_ICONS[c]} />
+                {t(`condition_${c}`)}
+              </>
+            )}
           />
           <ChipRow
             label={t('sourceLabel')}
             options={LOT_SOURCES}
             selected={source}
             onSelect={setSource}
-            render={(c) => `${LOT_ICONS[c]} ${t(`source_${c}`)}`}
+            render={(c) => (
+              <>
+                <Icon name={LOT_ICONS[c]} />
+                {t(`source_${c}`)}
+              </>
+            )}
           />
           {board[category] && (
             <p className="live-estimate text-center text-lg">≈ ₹{formatNumber(valueLot(weight, board[category]))}</p>
           )}
-          <button
+          <Button
             type="button"
             className="btn btn-primary w-full py-3 text-lg"
             disabled={submitting}
@@ -163,26 +192,26 @@ export function NewLot({ board, onClassify, onComplete, onCancel }: Props) {
               });
             }}
           >
-            {t('estimatedValue')} →
-          </button>
+            <Icon name="rupee" /> {t('estimatedValue')} <Icon name="next" />
+          </Button>
         </>
       )}
 
-      <button type="button" className="btn btn-link" onClick={back}>
-        ← {step === 'photo' ? t('cancel') : t('back')}
-      </button>
+      <Button type="button" className="btn btn-link" onClick={back}>
+        <Icon name="back" /> {step === 'photo' ? t('cancel') : t('back')}
+      </Button>
     </section>
   );
 }
 
-const LOT_ICONS: Record<LotCondition | LotSource, string> = {
-  working: '✅',
-  broken: '💔',
-  dismantled: '🔧',
-  household: '🏠',
-  shop: '🏪',
-  office: '🏢',
-  street: '🛣️',
+const LOT_ICONS: Record<LotCondition | LotSource, IconName> = {
+  working: 'check',
+  broken: 'close',
+  dismantled: 'tools',
+  household: 'home',
+  shop: 'shop',
+  office: 'building',
+  street: 'location',
 };
 
 function ChipRow<T extends string>(props: {
@@ -190,13 +219,13 @@ function ChipRow<T extends string>(props: {
   options: readonly T[];
   selected?: T;
   onSelect: (v: T | undefined) => void;
-  render: (v: T) => string;
+  render: (v: T) => React.ReactNode;
 }) {
   return (
     <fieldset className="chip-row flex flex-wrap items-center gap-2">
       <legend className="text-sm">{props.label}</legend>
       {props.options.map((o) => (
-        <button
+        <Button
           key={o}
           type="button"
           className={`btn chip ${props.selected === o ? 'is-selected ring-2' : ''}`}
@@ -204,7 +233,7 @@ function ChipRow<T extends string>(props: {
           onClick={() => props.onSelect(props.selected === o ? undefined : o)}
         >
           {props.render(o)}
-        </button>
+        </Button>
       ))}
     </fieldset>
   );
