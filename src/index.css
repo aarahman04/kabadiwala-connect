@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/*
+ * Placeholder styling only — the design pass owns this file.
+ * Semantic hooks available: .btn .btn-primary .btn-secondary .btn-link .chip
+ * .is-selected .is-active .status-<lotStatus> .lot-card .recycler-card
+ * .anomaly-badge .handover-code .ledger-entry .safety-card .sparkline
+ */
+.btn {
+  border-radius: 0.5rem;
+  border: 1px solid #d1d5db;
+  padding: 0.25rem 0.75rem;
+}
+.btn:disabled {
+  opacity: 0.5;
+}
+.btn-primary {
+  background: #166534;
+  color: #fff;
+  border-color: #166534;
+}
+.btn-link {
+  border: none;
+  text-decoration: underline;
+}

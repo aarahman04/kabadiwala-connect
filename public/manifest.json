@@ -1,0 +1,14 @@
+{
+  "name": "Kabadiwala Connect",
+  "short_name": "Kabadiwala",
+  "description": "Fair prices, authorized recyclers and verifiable handovers for e-waste collectors.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#166534",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
