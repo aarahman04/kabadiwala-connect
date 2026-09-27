@@ -18,6 +18,7 @@ Recyclers get their own side of the app to confirm handovers and publish rates. 
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Vercel (frontend), Railway (backend), Supabase (database), env vars |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Commands, tests, QA method, rules and gotchas for changing code |
 | [DECISIONS.md](DECISIONS.md) | Why things are the way they are (decision log) |
+| [DESIGN-GUIDE.md](DESIGN-GUIDE.md) | **For the visual design pass (Codex):** users, rules, screens, class hooks |
 
 Other sources of truth in the repo:
 - `problem details/` — the official problem statement and analysis. **Not in git**; it's the local copy only.
