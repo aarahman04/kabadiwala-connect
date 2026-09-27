@@ -28,7 +28,8 @@ import { detectPriceAnomaly } from './logic/anomaly';
 import { DEFAULT_ORIGIN } from './logic/geo';
 import { scoreRecyclers } from './logic/ranking';
 import { priceTrend, valueLot } from './logic/valuation';
-import { datasetExportLinks, resetServer, usingRemoteBackend } from './services/api';
+import { classifyPhoto, datasetExportLinks, resetServer, usingRemoteBackend } from './services/api';
+import { toSuggestion, type PhotoSuggestion } from './services/classifier';
 import { transactionAnomaly } from './services/serverCore';
 import { Handover } from './screens/Handover';
 import { Home } from './screens/Home';
@@ -239,10 +240,17 @@ function CollectorApp({ collectorId, onSwitchToRecycler }: { collectorId: string
       new Promise<PositionResult>((r) => setTimeout(() => r({ location: DEFAULT_ORIGIN, approximate: true }), 1500)),
     ]);
     const photoThumbnail = await thumbnailDataUrl(result.imageBlob, 160);
+    const { aiSuggestion, ...lotFields } = result;
     const lot = await createLot({
       collectorId,
-      ...result,
+      ...lotFields,
       photoThumbnail,
+      aiSuggestion: aiSuggestion && {
+        label: aiSuggestion.raw.class === 'Other' ? aiSuggestion.raw.best_guess ?? 'Other' : aiSuggestion.raw.class,
+        confidence: aiSuggestion.confidence,
+        uncertain: aiSuggestion.raw.uncertain,
+        model: aiSuggestion.raw.model ?? 'unknown',
+      },
       estimatedValue: valueLot(result.approxWeightKg, board[result.category]),
       location: position.approximate ? undefined : position.location,
     });
@@ -290,6 +298,7 @@ function CollectorApp({ collectorId, onSwitchToRecycler }: { collectorId: string
               positionRef.current = getPosition(6000);
             }}
             board={board}
+            onClassify={classifyForLot}
             onComplete={handleNewLot}
             onCancel={() => go({ name: 'home' })}
           />
@@ -539,4 +548,9 @@ function usePickupWatcher() {
       window.clearInterval(id);
     };
   }, [t]);
+}
+
+async function classifyForLot(photo: Blob): Promise<PhotoSuggestion | null> {
+  const result = await classifyPhoto(photo);
+  return result ? toSuggestion(result) : null;
 }

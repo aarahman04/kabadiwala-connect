@@ -8,6 +8,7 @@ const app = createApp({
   store,
   corsOrigin: process.env.CORS_ORIGIN ?? '*',
   adminToken: process.env.ADMIN_TOKEN,
+  classifierUrl: process.env.CLASSIFIER_URL,
 });
 
 createServer((req, res) => void app(req, res)).listen(port, () => {

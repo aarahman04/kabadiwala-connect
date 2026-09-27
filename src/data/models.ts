@@ -46,6 +46,9 @@ export interface MaterialLot {
   // Small JPEG data URL of imageBlob — synced so a recycler can see a pickup
   // request's photo before accepting it.
   photoThumbnail?: string;
+  // What the image classifier suggested, kept next to the category the
+  // collector actually chose — the start of a labelled training set.
+  aiSuggestion?: { label: string; confidence: number; uncertain: boolean; model: string };
 }
 
 export interface PriceEntry {

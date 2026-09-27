@@ -936,7 +936,9 @@ function pickupRequestsFor(s, recyclerId) {
 //#endregion
 //#region backend/src/app.ts
 const MAX_BODY_BYTES = 262144;
-function createApp({ store, corsOrigin = "*", adminToken }) {
+const MAX_IMAGE_UPLOAD_BYTES = 10485760;
+const CLASSIFY_TIMEOUT_MS = 6e4;
+function createApp({ store, corsOrigin = "*", adminToken, classifierUrl }) {
 	let state = null;
 	let queue = Promise.resolve();
 	const exclusive = (fn) => {
@@ -970,6 +972,24 @@ function createApp({ store, corsOrigin = "*", adminToken }) {
 			}
 			if (req.method === "GET" && path === "/api/recyclers") return json(res, 200, (await current()).recyclers);
 			if (req.method === "GET" && path === "/api/prices") return json(res, 200, (await current()).prices);
+			if (req.method === "POST" && path === "/api/classify") {
+				if (!classifierUrl) return json(res, 503, { error: "classifier not configured" });
+				const body = await readBody(req, MAX_IMAGE_UPLOAD_BYTES);
+				let upstream;
+				try {
+					upstream = await fetch(`${classifierUrl.replace(/\/+$/, "")}/api/classify`, {
+						method: "POST",
+						headers: { "content-type": req.headers["content-type"] ?? "application/octet-stream" },
+						body: new Uint8Array(body),
+						signal: AbortSignal.timeout(CLASSIFY_TIMEOUT_MS)
+					});
+				} catch {
+					return json(res, 503, { error: "classifier unreachable" });
+				}
+				const payload = await upstream.json().catch(() => ({ error: "bad classifier response" }));
+				const detail = payload.detail;
+				return json(res, upstream.status, upstream.ok ? payload : { error: typeof detail === "string" ? detail : "classification failed" });
+			}
 			if (req.method === "POST" && path === "/api/ops") {
 				const body = await readJson(req);
 				if (!body?.op || typeof body.op !== "object" || !("kind" in body.op)) return json(res, 400, { error: "body must be { op }" });
@@ -1057,6 +1077,9 @@ function exportDataset(s, name) {
 			approxWeightKg: l.approxWeightKg,
 			estimatedValue: l.estimatedValue,
 			status: l.status,
+			aiLabel: l.aiSuggestion?.label,
+			aiConfidence: l.aiSuggestion?.confidence,
+			aiModel: l.aiSuggestion?.model,
 			createdAt: iso(l.createdAt),
 			lat: l.location?.lat,
 			lng: l.location?.lng
@@ -1176,15 +1199,18 @@ var BodyTooLarge = class extends Error {
 		super("request body too large");
 	}
 };
-async function readJson(req) {
+async function readBody(req, limit) {
 	const chunks = [];
 	let size = 0;
 	for await (const chunk of req) {
 		size += chunk.length;
-		if (size > MAX_BODY_BYTES) throw new BodyTooLarge();
+		if (size > limit) throw new BodyTooLarge();
 		chunks.push(chunk);
 	}
-	return JSON.parse(Buffer.concat(chunks).toString("utf8") || "null");
+	return Buffer.concat(chunks);
+}
+async function readJson(req) {
+	return JSON.parse((await readBody(req, MAX_BODY_BYTES)).toString("utf8") || "null");
 }
 function json(res, status, body) {
 	res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
@@ -1344,6 +1370,15 @@ create table if not exists kc_lots (
   updated_at      timestamptz not null default now()
 );
 create index if not exists kc_lots_collector on kc_lots (collector_id);
+
+-- Image-classifier suggestion next to the collector's chosen category: a
+-- growing labelled dataset (photo thumbnail + human label + model guess).
+alter table kc_lots add column if not exists ai_label text
+  generated always as (data#>>'{aiSuggestion,label}') stored;
+alter table kc_lots add column if not exists ai_confidence numeric
+  generated always as ((data#>>'{aiSuggestion,confidence}')::numeric) stored;
+alter table kc_lots add column if not exists ai_model text
+  generated always as (data#>>'{aiSuggestion,model}') stored;
 `
 	},
 	{
@@ -1640,7 +1675,8 @@ const port = Number(process.env.PORT ?? 8787);
 const app = createApp({
 	store,
 	corsOrigin: process.env.CORS_ORIGIN ?? "*",
-	adminToken: process.env.ADMIN_TOKEN
+	adminToken: process.env.ADMIN_TOKEN,
+	classifierUrl: process.env.CLASSIFIER_URL
 });
 createServer((req, res) => void app(req, res)).listen(port, () => {
 	console.log(`Kabadiwala Connect API on :${port} (store: ${store.kind})`);

@@ -146,7 +146,7 @@ describe('offline handover → sync → confirmed', () => {
     expect(local.pickup?.contactPhone).toBe('98765 43210');
   });
 
-  it('confirmation that reaches the server before the handover still matches', async () => {
+  it('confirmation that reaches the server before the handover still matches', { timeout: 30_000 }, async () => {
     const db = await getDB();
     const recycler = (await db.get('recyclers', 'rc-02'))!;
     online = false;

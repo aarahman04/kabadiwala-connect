@@ -171,6 +171,11 @@ const en = {
   openMap: '📍 Open location in map',
   callCollector: '📞 Call collector',
   verifyAtPickup: 'At pickup: ask for the handover code, look it up above, pay and confirm.',
+  aiIdentifying: '🔎 Identifying the material from your photo…',
+  aiLooksLike: '🤖 Looks like: {category} ({pct}% sure)',
+  aiConfirm: '✅ Yes, that is right',
+  aiUnsure: '🤖 Not sure what this is — please choose below.',
+  aiNotEwaste: '🤖 This does not look like e-waste. Choose below if it is.',
 };
 
 export type StringKey = keyof typeof en;
@@ -347,6 +352,11 @@ const hi: Dict = {
   openMap: '📍 नक़्शे में जगह देखें',
   callCollector: '📞 कबाड़ीवाले को कॉल करें',
   verifyAtPickup: 'पिकअप पर: सौंपने का कोड पूछें, ऊपर खोजें, भुगतान करके पुष्टि करें।',
+  aiIdentifying: '🔎 फ़ोटो से माल पहचाना जा रहा है…',
+  aiLooksLike: '🤖 यह लगता है: {category} ({pct}% यक़ीन)',
+  aiConfirm: '✅ हाँ, सही है',
+  aiUnsure: '🤖 पक्का पता नहीं चला — नीचे से चुनें।',
+  aiNotEwaste: '🤖 यह ई-कचरा नहीं लगता। अगर है, तो नीचे से चुनें।',
 };
 
 const mr: Dict = {
@@ -520,6 +530,11 @@ const mr: Dict = {
   openMap: '📍 नकाशात ठिकाण पाहा',
   callCollector: '📞 भंगारवाल्याला फोन करा',
   verifyAtPickup: 'पिकअपला: सुपूर्द कोड विचारा, वर शोधा, पैसे देऊन पुष्टी करा.',
+  aiIdentifying: '🔎 फोटोवरून माल ओळखत आहे…',
+  aiLooksLike: '🤖 हे दिसते: {category} ({pct}% खात्री)',
+  aiConfirm: '✅ हो, बरोबर आहे',
+  aiUnsure: '🤖 नक्की ओळखता आले नाही — खालून निवडा.',
+  aiNotEwaste: '🤖 हा ई-कचरा वाटत नाही. असल्यास खालून निवडा.',
 };
 
 export const STRINGS: Record<Language, Dict> = { en, hi, mr };

@@ -82,6 +82,14 @@ Choosing a recycler calls `selectRecycler`, which creates the transaction as `pe
 - `src/schema.ts`: the SQL, as ordered sections. The server applies every section except `01_users` (Supabase-only) on boot; `npm run db:sql` writes them to `database/`.
 - `dist/server.mjs`: **committed** bundle of `src/index.ts` plus the shared frontend code, so Railway can deploy `backend/` on its own. `bundle.test.ts` fails if it's stale.
 
+## Classifier (`classifier/`, Python)
+
+- FastAPI + Transformers + PyTorch, with SigLIP 2 zero-shot. **All model logic is in `classifier_service.py`** behind `classify_image(image) -> {class, confidence, uncertain, best_guess, scores, model}`.
+- The model loads once. The 24 prompt text embeddings are computed once and cached. Each image is one forward pass: prompt logits → per-class mean → softmax over 8 classes → confidence and margin rules.
+- The PWA calls `api.classifyPhoto` (only when online) → Node `POST /api/classify` (proxy, needs `CLASSIFIER_URL`) → the Python service. Any failure returns null, and the collector uses the manual grid.
+- `src/services/classifier.ts` maps the labels to `MaterialCategory` (`LCD` → `LCD_PANEL`, …).
+- Swapping the model means a new class in `classifier_service.py`; the API, proxy and PWA don't change.
+
 ## Service worker
 
 `service-worker.js` (repo root) is processed at build time by the plugin in `vite.config.ts`, which injects the list of hashed assets to precache.

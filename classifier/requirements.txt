@@ -1,0 +1,13 @@
+# CPU-only PyTorch wheels (the default Linux wheel pulls ~2 GB of CUDA libraries).
+# On a GPU machine, drop this line to get the CUDA build.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+torch>=2.4
+transformers>=4.49,<6   # SigLIP 2 support landed in 4.49
+accelerate>=1.0
+Pillow>=10.0
+sentencepiece>=0.2      # SigLIP 2 (Gemma) tokenizer
+protobuf>=4.25
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9  # FastAPI file uploads

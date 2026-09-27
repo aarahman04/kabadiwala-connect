@@ -49,6 +49,7 @@ export interface NewLotInput {
   estimatedValue: number;
   location?: LatLng;
   photoThumbnail?: string;
+  aiSuggestion?: MaterialLot['aiSuggestion'];
   description?: string;
   condition?: string;
   sourceType?: string;
@@ -69,6 +70,7 @@ export async function createLot(input: NewLotInput): Promise<MaterialLot> {
     createdAt: Date.now(),
     location: input.location,
     photoThumbnail: input.photoThumbnail,
+    aiSuggestion: input.aiSuggestion,
   };
   await writeWithQueue(['materials'], async (tx) => {
     await tx.objectStore('materials').put(lot);

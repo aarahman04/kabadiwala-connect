@@ -54,6 +54,14 @@ The service deploys from this GitHub repo.
    ```
    The reset truncates the `kc_*` tables and re-seeds them. `kc_profiles` isn't touched.
 
+## 2b. Railway (classifier, optional)
+
+- Add a second service from the same repo with **Root Directory = `classifier`**. `railway.json` starts uvicorn, with a 600 s health-check timeout for the first model download.
+- It needs about 2 GB of RAM, or set `CLASSIFIER_DTYPE=bfloat16` for about 1 GB.
+- Generate a domain, then on the **backend** service set `CLASSIFIER_URL=https://<classifier-domain>`.
+- Without it the app works exactly as before: `/api/classify` returns 503, and the collector picks the category manually.
+- Details are in `classifier/README.md`.
+
 ## 3. Vercel (frontend)
 
 Live at https://kabadiwala-connect-olive-six.vercel.app/ and auto-deploys from `main`. Vercel runs `npm run build` (`tsc -b && vite build`) and serves `dist/`.

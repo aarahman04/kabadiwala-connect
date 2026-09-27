@@ -169,6 +169,15 @@ create table if not exists kc_lots (
   updated_at      timestamptz not null default now()
 );
 create index if not exists kc_lots_collector on kc_lots (collector_id);
+
+-- Image-classifier suggestion next to the collector's chosen category: a
+-- growing labelled dataset (photo thumbnail + human label + model guess).
+alter table kc_lots add column if not exists ai_label text
+  generated always as (data#>>'{aiSuggestion,label}') stored;
+alter table kc_lots add column if not exists ai_confidence numeric
+  generated always as ((data#>>'{aiSuggestion,confidence}')::numeric) stored;
+alter table kc_lots add column if not exists ai_model text
+  generated always as (data#>>'{aiSuggestion,model}') stored;
 `,
   },
   {

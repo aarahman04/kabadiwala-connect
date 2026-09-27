@@ -204,6 +204,47 @@ describe('backend over HTTP', () => {
     expect((await api.fetchPrices()).length).toBe(38);
   });
 
+  it('POST /api/classify: 503 when no classifier is configured', async () => {
+    const form = new FormData();
+    form.append('image', new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' }), 'x.jpg');
+    const res = await fetch(`${base}/api/classify`, { method: 'POST', body: form });
+    expect(res.status).toBe(503);
+  });
+
+  it('POST /api/classify: forwards the multipart upload and relays result / errors', async () => {
+    let seen = '';
+    const fake = createServer(async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const c of req) chunks.push(c as Buffer);
+      seen = `${req.method} ${req.url} ${req.headers['content-type']?.split(';')[0]} ${Buffer.concat(chunks).includes('PNGDATA')}`;
+      const bad = Buffer.concat(chunks).includes('BROKEN');
+      res.writeHead(bad ? 400 : 200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(bad ? { detail: 'not a valid image' } : { class: 'PCB', confidence: 0.8, uncertain: false, scores: {} }));
+    });
+    await new Promise<void>((r) => fake.listen(0, r));
+    const proxy = createServer(
+      createApp({ store: new MemoryStore(), classifierUrl: `http://127.0.0.1:${(fake.address() as AddressInfo).port}/` }),
+    );
+    await new Promise<void>((r) => proxy.listen(0, r));
+    const url = `http://127.0.0.1:${(proxy.address() as AddressInfo).port}/api/classify`;
+    const send = (text: string) => {
+      const form = new FormData();
+      form.append('image', new Blob([text], { type: 'image/png' }), 'p.png');
+      return fetch(url, { method: 'POST', body: form });
+    };
+    const ok = await send('PNGDATA');
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ class: 'PCB' });
+    expect(seen).toBe('POST /api/classify multipart/form-data true');
+    const bad = await send('BROKEN');
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: 'not a valid image' });
+    fake.close();
+    const down = await send('PNGDATA');
+    expect(down.status).toBe(503);
+    proxy.close();
+  });
+
   it('unreachable server surfaces as offline, not a server rejection', async () => {
     api.setApiBase('http://127.0.0.1:9');
     const { OfflineError } = await import('../../src/logic/sync');

@@ -44,7 +44,7 @@ Short records of why things are the way they are. Add new entries at the bottom.
   - the setup: a Google Cloud OAuth client, with the redirect set to the Supabase callback and the Vercel URL added to Supabase Auth redirect URLs.
 - Estimate: 1.5–2 h plus owner setup.
 
-**D-10 Material image classifier: not built. Here is what one would need.**
+**D-10 Material image classifier.** _Update: built as SigLIP 2 zero-shot, see D-14._ The original requirements:
 - **Model:** an image classifier over the 7 categories (CRT, LCD_PANEL, PCB, CABLE, BATTERY, MOTOR_MAGNET, MIXED_PLASTIC). It must be small enough for entry-level phones (≤ 5–10 MB), exportable to **TF.js or ONNX** (runs in the PWA offline via `onnxruntime-web`/`@tensorflow/tfjs`), with a known input size and a label map. A good base: MobileNetV3 or EfficientNet-Lite fine-tuned on e-waste images.
 - **Data:** labeled e-waste photos per category, with source, licence, size and known biases documented (the statement requires this). Plus field photos from collectors.
 - **Plug-in point:** the NewLot category step. Pre-select the top prediction and let the collector confirm or override. Keep the icon grid as the fallback.
@@ -55,3 +55,14 @@ Short records of why things are the way they are. Add new entries at the bottom.
 **D-12 Who the users are (clarified with the owner).** The app is for the **informal collector (kabadiwala)** selling to an **authorized recycler/aggregator**, as the problem statement says. It is **not** a household-to-kabadiwala scrap marketplace; the analysis explicitly warns that a generic marketplace is the trap. The owner's request / accept / on-the-way idea was adopted as the statement's *pickup availability*: the recycler's facility comes to the collector.
 
 **D-13 Notifications without a push service.** Status changes reach the other phone by polling every 15 s while online. They show as system notifications via `ServiceWorkerRegistration.showNotification`, which works while the app is open or in the background. Delivery to a fully closed app needs Web Push (VAPID keys + a push subscription endpoint on the backend). That was out of scope for the prototype.
+
+**D-14 The classifier is SigLIP 2 zero-shot, run as a separate Python service.**
+- **Why zero-shot:** there's no labelled e-waste dataset yet, and the statement says to use AI "where sufficient training data is available".
+- **How it's served:** as its own service, because PyTorch can't run in the Node backend or on low-end phones. The Node backend proxies to it, so the PWA still has a single API.
+- **Scoring:**
+  - rich prompts per class, averaged;
+  - softmax across the 8 classes;
+  - `Other` when the top score is below 0.35 or the top two are within 0.05.
+- **It only suggests;** the collector confirms. Offline, or on any failure, the collector picks manually. This matches the low-literacy, offline-first design.
+- **Every lot stores the model's suggestion next to the human choice,** which becomes the labelled set for a later fine-tune (the statement's "AI/ML training dataset").
+- **No accuracy is claimed until it's evaluated on a labelled test set.**

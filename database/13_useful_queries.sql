@@ -121,6 +121,16 @@ where t.pickup_status is not null
 group by r.name, t.pickup_status
 order by r.name, t.pickup_status;
 
+-- 11c. Image classifier vs the collector's own choice (agreement per category).
+--      Human-chosen category is the label; this is the evaluation set for the
+--      model. Map: CRT=CRT, LCD=LCD_PANEL, PCB=PCB, Cables=CABLE,
+--      Batteries=BATTERY, Motors/Magnets=MOTOR_MAGNET, Mixed Plastic=MIXED_PLASTIC.
+select category as chosen, ai_label, count(*) as lots, round(avg(ai_confidence), 2) as avg_confidence
+from kc_lots
+where ai_label is not null
+group by category, ai_label
+order by category, lots desc;
+
 -- 12. Audit trail: every accepted write, newest first.
 select at, kind, ref from kc_audit order by seq desc limit 100;
 

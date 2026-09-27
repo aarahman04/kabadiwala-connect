@@ -110,6 +110,7 @@ Tested with two separate Chrome profiles against the built server; they share no
 | `src/services/api.ts` | The only network module: real HTTP backend when `VITE_API_URL` is set, else in-browser mock |
 | `src/services/serverCore.ts` | Backend rules (validation, hash re-check, confirmations, anomaly flags, audit), shared by mock and server |
 | `backend/` | Deployable API folder (Railway root dir): `src/app.ts` routes + CSV export, `src/store.ts` Postgres/file/memory persistence, `src/schema.ts` SQL source; `dist/server.mjs` is the committed bundle |
+| `classifier/` | Python FastAPI service: SigLIP 2 zero-shot photo → material (see `classifier/README.md`). Optional; Railway root dir `classifier` |
 | `database/` | Numbered SQL files for the Supabase SQL editor (01 users → 12 seed prices) + `13_useful_queries.sql` |
 | `docs/` | Handoff docs: progress, architecture, data model, deployment, decisions — **start here in a new session** |
 | `src/data/recyclerLookup.ts` | Recycler-side data: code lookup, final-price check, worklist, rate publishing |

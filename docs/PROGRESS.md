@@ -27,6 +27,11 @@ A shared backend (`backend/`) gives real multi-device sync, so the collector and
 - `kc_transactions` pickup columns (ALTER-upgrades existing tables), pickups query 11b.
 
 Also fixed: a write made during an in-flight sync waited for the next trigger; `runSync` now runs one more pass. |
+| _latest_ | **AI photo classifier.** `classifier/` is a Python FastAPI service running **SigLIP 2 zero-shot** (`google/siglip2-base-patch16-224`).
+- Classes: 7 materials + Other, with confidence and top-2 margin rules.
+- `POST /api/classify` on the Node backend proxies to it (`CLASSIFIER_URL`).
+- The NewLot photo step suggests a category and the collector confirms. Offline or unsure, it falls back to the manual grid.
+- Lots store `aiSuggestion` (DB columns `ai_label/ai_confidence/ai_model`, query 11c). |
 
 ## Verified (and how)
 
@@ -48,6 +53,14 @@ Also fixed: a write made during an in-flight sync waited for the next trigger; `
   - the backend API suite passes, and data survives a database restart;
   - `database/13_useful_queries.sql` blocks all execute.
 - **The `backend/` folder in isolation:** `npm ci` and `npm start` work, and it creates the schema and seeds a real Postgres.
+
+**Classifier smoke test (NOT an accuracy evaluation).** 9 Wikimedia photos, CPU:
+- PCB 95.8%, CRT 93.2%, LCD 97.8%, Cables 94.0%, Batteries 89.6%, Motors 78.8%: all correct.
+- Banana and dog → Other.
+- A typewriter photo used as "mixed plastic" → **CRT 60.6% (wrong)**.
+- About 230–370 ms per image on CPU; cached load about 18 s; the first download is 1.5 GB.
+- Invalid uploads handled: truncated → 400, non-image → 400, GIF → 415, empty → 400. A forced `cuda` falls back to CPU.
+- The full PWA → Node proxy → classifier path was verified in Chrome.
 
 ## NOT verified yet
 
@@ -82,7 +95,7 @@ Also fixed: a write made during an in-flight sync waited for the next trigger; `
 
 | Gap | Note |
 |---|---|
-| Image classification | Not built. Needs a model (see D-10); the category grid is the plug-in point |
+| Image classification accuracy | Zero-shot SigLIP 2 is built and works on clear photos, but it is **not evaluated** on a labelled e-waste set. Mixed plastic is the weakest class. Fine-tune it on the collector-labelled lots (`aiSuggestion` vs the chosen category) |
 | Notifications when the app is fully closed | Needs Web Push (VAPID + a push service). Today they work while the app is open or in the background |
 | Voice input ("say material, hear rate") | Not built. Browser speech recognition needs the network on most Android phones |
 | Per-location price board | Single city (Nagpur) seed data |

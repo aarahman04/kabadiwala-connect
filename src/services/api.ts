@@ -11,6 +11,7 @@
  * halts and retries later, and a validation refusal as a plain Error.
  */
 import type { PriceEntry, Recycler, SyncOp } from '../data/models';
+import type { ClassifierResult } from './classifier';
 import { OfflineError } from '../logic/sync';
 import {
   applyOp,
@@ -182,6 +183,24 @@ export async function fetchPickupRequests(recyclerId: string): Promise<PickupReq
     `/api/recyclers/${encodeURIComponent(recyclerId)}/requests`,
   );
   return requests;
+}
+
+/**
+ * Photo -> material suggestion via the backend's /api/classify (which forwards
+ * to the Python classifier). Returns null when offline, when there is no
+ * backend, or on any failure — the manual category grid always works.
+ */
+export async function classifyPhoto(photo: Blob): Promise<ClassifierResult | null> {
+  if (!apiBase || !isOnline()) return null;
+  try {
+    const form = new FormData();
+    form.append('image', photo, photo.type === 'image/png' ? 'photo.png' : 'photo.jpg');
+    const res = await fetch(`${apiBase}/api/classify`, { method: 'POST', body: form, signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) return null;
+    return (await res.json()) as ClassifierResult;
+  } catch {
+    return null;
+  }
 }
 
 /** Demo helper: wipe the local mock server (used by "Reset demo"). */

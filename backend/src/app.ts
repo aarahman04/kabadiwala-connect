@@ -20,14 +20,17 @@ import {
 import type { Store } from './store';
 
 const MAX_BODY_BYTES = 256 * 1024;
+const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
+const CLASSIFY_TIMEOUT_MS = 60_000;
 
 export interface AppOptions {
   store: Store;
   corsOrigin?: string; // default "*"
   adminToken?: string; // enables POST /api/admin/reset
+  classifierUrl?: string; // Python classifier service; enables POST /api/classify
 }
 
-export function createApp({ store, corsOrigin = '*', adminToken }: AppOptions) {
+export function createApp({ store, corsOrigin = '*', adminToken, classifierUrl }: AppOptions) {
   let state: ServerState | null = null;
   // Serialize every mutation: read-modify-write of one in-memory document.
   let queue: Promise<unknown> = Promise.resolve();
@@ -64,6 +67,28 @@ export function createApp({ store, corsOrigin = '*', adminToken }: AppOptions) {
       }
       if (req.method === 'GET' && path === '/api/recyclers') return json(res, 200, (await current()).recyclers);
       if (req.method === 'GET' && path === '/api/prices') return json(res, 200, (await current()).prices);
+
+      // Photo -> material category. The model runs in the separate Python
+      // service (classifier/); this only forwards the multipart upload so the
+      // app keeps talking to one API.
+      if (req.method === 'POST' && path === '/api/classify') {
+        if (!classifierUrl) return json(res, 503, { error: 'classifier not configured' });
+        const body = await readBody(req, MAX_IMAGE_UPLOAD_BYTES);
+        let upstream: Response;
+        try {
+          upstream = await fetch(`${classifierUrl.replace(/\/+$/, '')}/api/classify`, {
+            method: 'POST',
+            headers: { 'content-type': req.headers['content-type'] ?? 'application/octet-stream' },
+            body: new Uint8Array(body),
+            signal: AbortSignal.timeout(CLASSIFY_TIMEOUT_MS),
+          });
+        } catch {
+          return json(res, 503, { error: 'classifier unreachable' });
+        }
+        const payload = await upstream.json().catch(() => ({ error: 'bad classifier response' }));
+        const detail = (payload as { detail?: unknown }).detail;
+        return json(res, upstream.status, upstream.ok ? payload : { error: typeof detail === 'string' ? detail : 'classification failed' });
+      }
 
       if (req.method === 'POST' && path === '/api/ops') {
         const body = (await readJson(req)) as { op?: SyncOp };
@@ -171,6 +196,9 @@ export function exportDataset(s: ServerState, name: string): Row[] | null {
         approxWeightKg: l.approxWeightKg,
         estimatedValue: l.estimatedValue,
         status: l.status,
+        aiLabel: l.aiSuggestion?.label,
+        aiConfidence: l.aiSuggestion?.confidence,
+        aiModel: l.aiSuggestion?.model,
         createdAt: iso(l.createdAt),
         lat: l.location?.lat,
         lng: l.location?.lng,
@@ -301,15 +329,19 @@ class BodyTooLarge extends Error {
   }
 }
 
-async function readJson(req: IncomingMessage): Promise<unknown> {
+async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > MAX_BODY_BYTES) throw new BodyTooLarge();
+    if (size > limit) throw new BodyTooLarge();
     chunks.push(chunk as Buffer);
   }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8') || 'null');
+  return Buffer.concat(chunks);
+}
+
+async function readJson(req: IncomingMessage): Promise<unknown> {
+  return JSON.parse((await readBody(req, MAX_BODY_BYTES)).toString('utf8') || 'null');
 }
 
 function json(res: ServerResponse, status: number, body: unknown): void {
