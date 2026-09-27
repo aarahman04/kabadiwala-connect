@@ -151,16 +151,22 @@ export function startSyncTriggers(): () => void {
     if (api.isOnline()) void runSync();
   };
   const onOffline = () => setStatus({ online: false });
+  // The simulate-offline flag lives in localStorage; mirror flips from another tab.
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === api.SIMULATE_OFFLINE_KEY) onOnline();
+  };
   const onSwMessage = (e: MessageEvent) => {
     if (e.data?.type === 'kc-sync') void runSync();
   };
   window.addEventListener('online', onOnline);
   window.addEventListener('offline', onOffline);
+  window.addEventListener('storage', onStorage);
   navigator.serviceWorker?.addEventListener('message', onSwMessage);
   void getSetting<number>('lastSyncAt').then((lastSyncAt) => setStatus({ lastSyncAt }));
   return () => {
     window.removeEventListener('online', onOnline);
     window.removeEventListener('offline', onOffline);
+    window.removeEventListener('storage', onStorage);
     navigator.serviceWorker?.removeEventListener('message', onSwMessage);
   };
 }

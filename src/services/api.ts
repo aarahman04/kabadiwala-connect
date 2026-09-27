@@ -20,7 +20,7 @@ import { seedPrices, seedRecyclers } from '../data/seed';
 import { OfflineError } from '../logic/sync';
 
 const SERVER_KEY = 'kc-mock-server-v1';
-const SIMULATE_OFFLINE_KEY = 'kc-simulate-offline';
+export const SIMULATE_OFFLINE_KEY = 'kc-simulate-offline';
 
 interface ServerState {
   recyclers: Recycler[];

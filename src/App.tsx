@@ -11,7 +11,7 @@ import { usePrices } from './hooks/usePrices';
 import { useRecyclers } from './hooks/useRecyclers';
 import { useSyncQueue } from './hooks/useSyncQueue';
 import { I18nProvider, useI18n } from './i18n/I18nProvider';
-import { SAFETY_CARDS } from './i18n/strings';
+import { CATEGORY_NAMES, SAFETY_CARDS, translate } from './i18n/strings';
 import { detectPriceAnomaly } from './logic/anomaly';
 import { DEFAULT_ORIGIN } from './logic/geo';
 import { scoreRecyclers } from './logic/ranking';
@@ -105,7 +105,12 @@ function CollectorApp({ collectorId, onSwitchToRecycler }: { collectorId: string
   };
 
   async function handleNewLot(result: NewLotResult) {
-    const position = await (positionRef.current ?? getPosition(3000));
+    // Lot location is optional (ranking falls back to city centre) — don't make
+    // the collector wait on a slow fix or an unanswered permission prompt.
+    const position = await Promise.race([
+      positionRef.current ?? getPosition(3000),
+      new Promise<PositionResult>((r) => setTimeout(() => r({ location: DEFAULT_ORIGIN, approximate: true }), 1500)),
+    ]);
     const lot = await createLot({
       collectorId,
       ...result,
@@ -175,7 +180,13 @@ function CollectorApp({ collectorId, onSwitchToRecycler }: { collectorId: string
             prices={prices}
             onSpeak={(c: MaterialCategory) => {
               const row = board[c];
-              if (row) speak(`${categoryName(c)}. ${t('pricePerKg', { price: Math.round(row.pricePerUnit) })}`, lang);
+              if (!row) return;
+              const price = Math.round(row.pricePerUnit);
+              speak(
+                `${categoryName(c)}. ${t('pricePerKg', { price })}`,
+                lang,
+                `${CATEGORY_NAMES.en[c]}. ${translate('en', 'pricePerKg', { price })}`,
+              );
             }}
           />
         )}
@@ -187,7 +198,16 @@ function CollectorApp({ collectorId, onSwitchToRecycler }: { collectorId: string
             onOpenLot={(lotId) => go({ name: 'lot', lotId })}
           />
         )}
-        {route.name === 'safety' && <Safety cards={SAFETY_CARDS[lang]} onSpeak={(text) => speak(text, lang)} />}
+        {route.name === 'safety' && (
+          <Safety
+            cards={SAFETY_CARDS[lang]}
+            onSpeak={(text) => {
+              const i = SAFETY_CARDS[lang].findIndex((c) => text.startsWith(c.title));
+              const en = SAFETY_CARDS.en[i];
+              speak(text, lang, en && `${en.title}. ${en.body}`);
+            }}
+          />
+        )}
       </main>
 
       <nav className="bottom-nav fixed bottom-0 left-0 right-0 mx-auto grid max-w-md grid-cols-5 border-t bg-white">
@@ -270,6 +290,11 @@ function LotFlow({
               amount: lot.estimatedValue,
             }),
             lang,
+            translate('en', 'spokenPrice', {
+              category: CATEGORY_NAMES.en[lot.category],
+              weight: lot.approxWeightKg,
+              amount: lot.estimatedValue,
+            }),
           )
         }
         onFindRecyclers={() => onStep(transaction ? 'handover' : 'match')}
@@ -323,7 +348,9 @@ function LotFlow({
           locationApproximate: position.approximate,
         });
       }}
-      onSpeakCode={(code) => speak(t('spokenCode', { code: spellCode(code) }), lang)}
+      onSpeakCode={(code) =>
+        speak(t('spokenCode', { code: spellCode(code) }), lang, translate('en', 'spokenCode', { code: spellCode(code) }))
+      }
       onMarkPaid={(method) => void markPaid(lot.lotId, method)}
       onChangeRecycler={() => onStep('match')}
       onBack={onDone}

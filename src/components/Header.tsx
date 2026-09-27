@@ -46,7 +46,9 @@ export function Header({ title, sync, pendingCount, onSyncNow, simulatedOffline,
           <span className="last-sync opacity-70">{t('lastSynced', { time: formatDateTime(sync.lastSyncAt) })}</span>
         )}
         {sync.lastResult && !sync.syncing && (sync.lastResult.sent > 0 || sync.lastResult.confirmed > 0) && (
-          <span className="sync-result">{t('syncDone', sync.lastResult)}</span>
+          <span className="sync-result">
+            {sync.lastResult.confirmed > 0 ? t('syncDone', sync.lastResult) : t('syncSent', sync.lastResult)}
+          </span>
         )}
         {sync.lastError && <span className="sync-error text-red-700">{t('errorGeneric', { message: sync.lastError })}</span>}
         <label className="simulate-offline ml-auto flex items-center gap-1">

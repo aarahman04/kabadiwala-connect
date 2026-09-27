@@ -24,6 +24,13 @@ export function getPosition(timeoutMs = 8000): Promise<PositionResult> {
       return { location: DEFAULT_ORIGIN, approximate: true };
     };
     if (!('geolocation' in navigator)) return resolve(fallback());
+    // The API's own `timeout` doesn't start until the permission prompt is
+    // answered, so an ignored prompt would hang forever. Hard deadline instead.
+    const deadline = setTimeout(() => resolve(fallback()), timeoutMs + 2000);
+    const done = (r: PositionResult) => {
+      clearTimeout(deadline);
+      resolve(r);
+    };
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const location = { lat: pos.coords.latitude, lng: pos.coords.longitude };
@@ -32,9 +39,9 @@ export function getPosition(timeoutMs = 8000): Promise<PositionResult> {
         } catch {
           // ignore
         }
-        resolve({ location, approximate: false });
+        done({ location, approximate: false });
       },
-      () => resolve(fallback()),
+      () => done(fallback()),
       { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 60_000 },
     );
   });

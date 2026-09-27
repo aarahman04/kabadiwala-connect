@@ -12,6 +12,7 @@ const en = {
   lastSynced: 'Last synced {time}',
   simulateOffline: 'Demo: simulate offline',
   syncDone: 'Sent {sent}, confirmed {confirmed}',
+  syncSent: 'Sent {sent}',
 
   navHome: 'Home',
   navNewLot: 'Sell',
@@ -132,6 +133,7 @@ const hi: Dict = {
   lastSynced: 'आखिरी सिंक {time}',
   simulateOffline: 'डेमो: ऑफ़लाइन मोड',
   syncDone: '{sent} भेजे, {confirmed} पक्के हुए',
+  syncSent: '{sent} भेजे',
 
   navHome: 'होम',
   navNewLot: 'बेचें',
@@ -249,6 +251,7 @@ const mr: Dict = {
   lastSynced: 'शेवटचे सिंक {time}',
   simulateOffline: 'डेमो: ऑफलाइन मोड',
   syncDone: '{sent} पाठवले, {confirmed} पक्के झाले',
+  syncSent: '{sent} पाठवले',
 
   navHome: 'होम',
   navNewLot: 'विका',
