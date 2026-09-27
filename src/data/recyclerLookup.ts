@@ -5,7 +5,7 @@
 import { getDB, getSetting, notifyChange, setSetting } from './db';
 import { recyclerConfirm } from './actions';
 import { requestSync, runSync } from './syncRunner';
-import type { ConfirmationPayload, MaterialCategory, Recycler, TraceabilityRecord } from './models';
+import type { ConfirmationPayload, LatLng, MaterialCategory, PickupStatus, Recycler, TraceabilityRecord } from './models';
 import * as api from '../services/api';
 import { transactionAnomaly, type TransactionFlag } from '../services/serverCore';
 import { normalizeReference, verifyHandover } from '../logic/hashing';
@@ -171,4 +171,37 @@ export async function saveRecyclerRates(
   await tx.done;
   notifyChange('recyclers', 'syncQueue');
   requestSync();
+}
+
+export interface PickupInboxItem {
+  transactionId: string;
+  status: PickupStatus;
+  requestedAt: number;
+  category?: MaterialCategory;
+  weight?: number;
+  quotedPrice: number;
+  location: LatLng; // where the collector is
+  contactPhone?: string;
+  thumbnail?: string;
+}
+
+/** Open pickup requests for this facility, from the server. Null when offline. */
+export async function loadPickupRequests(recyclerId: string): Promise<PickupInboxItem[] | null> {
+  if (!api.isOnline()) return null;
+  try {
+    const list = await api.fetchPickupRequests(recyclerId);
+    return list.map(({ transaction: t, lot }) => ({
+      transactionId: t.transactionId,
+      status: t.pickup!.status,
+      requestedAt: t.pickup!.requestedAt,
+      category: lot?.category,
+      weight: lot?.approxWeightKg,
+      quotedPrice: t.quotedPrice,
+      location: t.collectionLocation,
+      contactPhone: t.pickup!.contactPhone,
+      thumbnail: lot?.photoThumbnail,
+    }));
+  } catch {
+    return null;
+  }
 }

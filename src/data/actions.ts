@@ -20,6 +20,7 @@ import type {
 } from './models';
 import { computeHandoverHash, referenceFromHash } from '../logic/hashing';
 import { advanceLotStatus, advanceTxStatus, applyPayment, isPaid, lotForSync, recordForSync } from '../logic/sync';
+import { advancePickup } from '../services/serverCore';
 import { requestSync } from './syncRunner';
 
 type WriteTx = IDBPTransaction<KCSchema, StoreName[], 'readwrite'>;
@@ -47,6 +48,7 @@ export interface NewLotInput {
   approxWeightKg: number;
   estimatedValue: number;
   location?: LatLng;
+  photoThumbnail?: string;
   description?: string;
   condition?: string;
   sourceType?: string;
@@ -66,6 +68,7 @@ export async function createLot(input: NewLotInput): Promise<MaterialLot> {
     status: 'valued',
     createdAt: Date.now(),
     location: input.location,
+    photoThumbnail: input.photoThumbnail,
   };
   await writeWithQueue(['materials'], async (tx) => {
     await tx.objectStore('materials').put(lot);
@@ -201,9 +204,38 @@ export async function markPaid(lotId: string, paymentStatus: Exclude<PaymentStat
   });
 }
 
+/**
+ * Ask the chosen recycler to come and collect. Recorded locally at once and
+ * queued; the recycler's accept / on-the-way / arriving updates come back on
+ * sync. Idempotent: an active request is not re-sent.
+ */
+export async function requestPickup(lotId: string, contactPhone?: string): Promise<void> {
+  await writeWithQueue(['transactions'], async (tx) => {
+    const transaction = await tx.objectStore('transactions').index('byLot').get(lotId);
+    if (!transaction) throw new Error('choose a recycler first');
+    if (transaction.pickup && transaction.pickup.status !== 'declined') return [];
+    const at = Date.now();
+    const pickup = advancePickup(undefined, 'requested', at)!;
+    await tx.objectStore('transactions').put({
+      ...transaction,
+      pickup: { ...pickup, contactPhone: contactPhone?.trim() || undefined },
+    });
+    return [{ kind: 'requestPickup', transactionId: transaction.transactionId, contactPhone, at }];
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Recycler actions
 // ---------------------------------------------------------------------------
+
+/** Recycler answers a pickup request: accept / decline / on the way / arriving. */
+export async function updatePickup(
+  transactionId: string,
+  recyclerId: string,
+  status: 'accepted' | 'declined' | 'on_the_way' | 'arriving',
+): Promise<void> {
+  await writeWithQueue([], async () => [{ kind: 'updatePickup', transactionId, recyclerId, status, at: Date.now() }]);
+}
 
 /**
  * Recycler confirms a handover code. This only goes to the server (queued if

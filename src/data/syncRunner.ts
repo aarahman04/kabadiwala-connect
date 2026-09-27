@@ -7,6 +7,20 @@
 import { getDB, getSetting, notifyChange, setSetting } from './db';
 import * as api from '../services/api';
 import { applyConfirmation, flushQueue, isPaid, OfflineError } from '../logic/sync';
+import { mergePickup } from '../services/serverCore';
+import type { PickupStatus } from './models';
+
+/** Fired when a pulled update moves one of this collector's pickups forward. */
+export interface PickupChange {
+  transactionId: string;
+  recyclerId: string;
+  status: PickupStatus;
+}
+const pickupListeners = new Set<(changes: PickupChange[]) => void>();
+export function subscribePickupChanges(listener: (changes: PickupChange[]) => void): () => void {
+  pickupListeners.add(listener);
+  return () => pickupListeners.delete(listener);
+}
 
 export interface SyncStatus {
   syncing: boolean;
@@ -34,9 +48,24 @@ export function subscribeSyncStatus(listener: (s: SyncStatus) => void): () => vo
 }
 
 let inFlight: Promise<void> | null = null;
+let rerunRequested = false;
 
+/**
+ * One sync at a time. A call that arrives mid-sync (e.g. a write made while
+ * the previous one was being sent) queues one more pass, and every caller's
+ * promise resolves only after that pass — so nothing waits for the next poll.
+ */
 export function runSync(): Promise<void> {
-  inFlight ??= doSync().finally(() => {
+  if (inFlight) {
+    rerunRequested = true;
+    return inFlight;
+  }
+  inFlight = (async () => {
+    do {
+      rerunRequested = false;
+      await doSync();
+    } while (rerunRequested && api.isOnline());
+  })().finally(() => {
     inFlight = null;
   });
   return inFlight;
@@ -98,6 +127,7 @@ async function pullRemote(): Promise<number> {
   notifyChange('recyclers', 'prices');
 
   if (!collectorId) return 0;
+  await pullPickups(collectorId);
   const updates = await api.pullUpdates(collectorId);
   let confirmed = 0;
   for (const u of updates) {
@@ -169,4 +199,26 @@ export function startSyncTriggers(): () => void {
     window.removeEventListener('storage', onStorage);
     navigator.serviceWorker?.removeEventListener('message', onSwMessage);
   };
+}
+
+/** Merge the recycler's pickup progress into local transactions. */
+async function pullPickups(collectorId: string): Promise<void> {
+  const remote = await api.fetchPickups(collectorId);
+  if (remote.length === 0) return;
+  const db = await getDB();
+  const tx = db.transaction('transactions', 'readwrite');
+  const changes: PickupChange[] = [];
+  for (const r of remote) {
+    const local = await tx.store.get(r.transactionId);
+    if (!local) continue;
+    const merged = mergePickup(local.pickup, r.pickup);
+    if (merged === local.pickup) continue;
+    await tx.store.put({ ...local, pickup: merged });
+    if (merged) changes.push({ transactionId: local.transactionId, recyclerId: local.recyclerId, status: merged.status });
+  }
+  await tx.done;
+  if (changes.length) {
+    notifyChange('transactions');
+    pickupListeners.forEach((l) => l(changes));
+  }
 }

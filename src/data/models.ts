@@ -43,6 +43,9 @@ export interface MaterialLot {
   status: LotStatus;
   createdAt: number;
   location?: LatLng;
+  // Small JPEG data URL of imageBlob — synced so a recycler can see a pickup
+  // request's photo before accepting it.
+  photoThumbnail?: string;
 }
 
 export interface PriceEntry {
@@ -88,6 +91,23 @@ export interface Transaction {
   dateTime: number;
   paymentStatus: PaymentStatus;
   transactionStatus: TransactionStatus;
+  pickup?: PickupRequest; // present once the collector asks the recycler to come
+}
+
+/**
+ * Pickup lifecycle, driven by the recycler after the collector asks:
+ * requested -> accepted -> on_the_way -> arriving -> completed (on confirmation).
+ * declined can happen from requested/accepted. Forward-only, like the other
+ * statuses — see pickupProgress() in services/serverCore.ts.
+ */
+export type PickupStatus = 'requested' | 'accepted' | 'on_the_way' | 'arriving' | 'completed' | 'declined';
+
+export interface PickupRequest {
+  status: PickupStatus;
+  requestedAt: number;
+  updatedAt: number;
+  contactPhone?: string; // optional, given by the collector for this pickup only
+  history: { status: PickupStatus; at: number }[];
 }
 
 export interface RecyclerConfirmation {
@@ -149,6 +169,14 @@ export type SyncOp =
   | { kind: 'upsertTraceability'; record: Omit<TraceabilityRecord, 'photoBlobs'> }
   | { kind: 'confirmHandover'; confirmation: ConfirmationPayload }
   | { kind: 'markPaid'; transactionId: string; paymentStatus: PaymentStatus }
+  | { kind: 'requestPickup'; transactionId: string; contactPhone?: string; at: number }
+  | {
+      kind: 'updatePickup';
+      transactionId: string;
+      recyclerId: string;
+      status: Extract<PickupStatus, 'accepted' | 'declined' | 'on_the_way' | 'arriving'>;
+      at: number;
+    }
   | {
       kind: 'updateRecyclerRates';
       recyclerId: string;

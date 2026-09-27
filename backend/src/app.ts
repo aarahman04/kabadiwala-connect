@@ -11,6 +11,8 @@ import {
   handoverByReference,
   handoversForRecycler,
   initialServerState,
+  pickupRequestsFor,
+  pickupsFor,
   updatesFor,
   ValidationError,
   type ServerState,
@@ -84,6 +86,12 @@ export function createApp({ store, corsOrigin = '*', adminToken }: AppOptions) {
         return json(res, 200, updatesFor(await current(), collectorId));
       }
 
+      if (req.method === 'GET' && path === '/api/pickups') {
+        const collectorId = url.searchParams.get('collectorId');
+        if (!collectorId) return json(res, 400, { error: 'collectorId required' });
+        return json(res, 200, pickupsFor(await current(), collectorId));
+      }
+
       let m = path.match(/^\/api\/handovers\/(KC-[0-9A-Fa-f]{6})$/);
       if (req.method === 'GET' && m) {
         return json(res, 200, { handover: handoverByReference(await current(), m[1].toUpperCase()) });
@@ -92,6 +100,11 @@ export function createApp({ store, corsOrigin = '*', adminToken }: AppOptions) {
       m = path.match(/^\/api\/recyclers\/([\w-]+)\/handovers$/);
       if (req.method === 'GET' && m) {
         return json(res, 200, { handovers: handoversForRecycler(await current(), m[1]) });
+      }
+
+      m = path.match(/^\/api\/recyclers\/([\w-]+)\/requests$/);
+      if (req.method === 'GET' && m) {
+        return json(res, 200, { requests: pickupRequestsFor(await current(), m[1]) });
       }
 
       m = path.match(/^\/api\/export\/(\w+)\.(json|csv)$/);
@@ -211,6 +224,8 @@ export function exportDataset(s: ServerState, name: string): Row[] | null {
           dateTime: iso(t.dateTime),
           paymentStatus: t.paymentStatus,
           transactionStatus: t.transactionStatus,
+          pickupStatus: t.pickup?.status,
+          pickupRequestedAt: iso(t.pickup?.requestedAt),
           anomaly: s.flags[t.transactionId]?.reason,
         };
       });

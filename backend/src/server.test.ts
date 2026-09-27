@@ -99,6 +99,51 @@ describe('backend over HTTP', () => {
     expect(prices.some((p) => p.recyclerId === 'rc-01' && p.category === 'CABLE' && p.buyingPrice === 220)).toBe(true);
   });
 
+  it('pickup request: collector asks, recycler accepts -> on the way -> arriving, collector sees each step', async () => {
+    const { lot, tx, record } = await handover('collector-P', 'rc-02', 'CABLE', 3, 675);
+    await api.pushOp({ kind: 'upsertLot', lot: { ...lot, status: 'matched' } });
+    await api.pushOp({ kind: 'upsertTransaction', transaction: { ...tx, transactionStatus: 'pending' } });
+    await api.pushOp({ kind: 'requestPickup', transactionId: tx.transactionId, contactPhone: '+91 98x 00 11', at: 1 });
+    await api.pushOp({ kind: 'requestPickup', transactionId: tx.transactionId, at: 2 }); // repeat is a no-op
+
+    // Recycler device sees it in its inbox (phone sanitized, lot attached).
+    const inbox = await api.fetchPickupRequests('rc-02');
+    const mine = inbox.find((r) => r.transaction.transactionId === tx.transactionId)!;
+    expect(mine.transaction.pickup).toMatchObject({ status: 'requested', requestedAt: 1, contactPhone: '+91 98 00 11' });
+    expect(mine.lot?.category).toBe('CABLE');
+    expect(await api.fetchPickupRequests('rc-01')).toHaveLength(0);
+
+    // Another facility can't act on it; steps can't go backwards.
+    await expect(
+      api.pushOp({ kind: 'updatePickup', transactionId: tx.transactionId, recyclerId: 'rc-01', status: 'accepted', at: 3 }),
+    ).rejects.toThrow(/different recycler/);
+    for (const [status, at] of [['accepted', 3], ['on_the_way', 4], ['arriving', 5], ['accepted', 6]] as const) {
+      await api.pushOp({ kind: 'updatePickup', transactionId: tx.transactionId, recyclerId: 'rc-02', status, at });
+    }
+    const [p] = (await api.fetchPickups('collector-P')).filter((x) => x.transactionId === tx.transactionId);
+    expect(p.pickup.status).toBe('arriving');
+    expect(p.pickup.history.map((h) => h.status)).toEqual(['requested', 'accepted', 'on_the_way', 'arriving']);
+
+    // A stale client copy of the transaction can't rewind the pickup.
+    await api.pushOp({ kind: 'upsertTransaction', transaction: { ...tx, pickup: { ...p.pickup, status: 'requested' } } });
+    expect((await api.fetchPickups('collector-P'))[0].pickup.status).toBe('arriving');
+
+    // Handover + confirmation completes the pickup and empties the inbox.
+    await api.pushOp({ kind: 'upsertTraceability', record });
+    await api.pushOp({
+      kind: 'confirmHandover',
+      confirmation: { handoverReference: record.handoverReference, confirmedBy: 'V', confirmedAt: 9, paymentStatus: 'paid_cash' },
+    });
+    expect((await api.fetchPickups('collector-P'))[0].pickup.status).toBe('completed');
+    expect((await api.fetchPickupRequests('rc-02')).some((r) => r.transaction.transactionId === tx.transactionId)).toBe(false);
+  });
+
+  it('pickup is refused for a drop-off-only recycler', async () => {
+    const { tx } = await handover('collector-P', 'rc-03', 'CABLE', 1, 230); // rc-03: no pickup
+    await api.pushOp({ kind: 'upsertTransaction', transaction: { ...tx, transactionStatus: 'pending' } });
+    await expect(api.pushOp({ kind: 'requestPickup', transactionId: tx.transactionId, at: 1 })).rejects.toThrow(/pickup/);
+  });
+
   it('refuses tampered records, unauthorized recyclers and junk', async () => {
     const { record, tx } = await handover('collector-A', 'rc-01', 'PCB', 2, 300);
     await expect(api.pushOp({ kind: 'upsertTraceability', record: { ...record, weight: 20 } })).rejects.toThrow(/hash/);

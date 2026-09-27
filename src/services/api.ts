@@ -18,13 +18,17 @@ import {
   handoversForRecycler,
   initialServerState,
   normalizeState,
+  pickupRequestsFor,
+  pickupsFor,
   updatesFor,
+  type PickupRequestView,
+  type PickupUpdate,
   type RemoteHandover,
   type RemoteHandoverUpdate,
   type ServerState,
 } from './serverCore';
 
-export type { RemoteHandover, RemoteHandoverUpdate } from './serverCore';
+export type { PickupRequestView, PickupUpdate, RemoteHandover, RemoteHandoverUpdate } from './serverCore';
 
 const SERVER_KEY = 'kc-mock-server-v1';
 export const SIMULATE_OFFLINE_KEY = 'kc-simulate-offline';
@@ -162,6 +166,22 @@ export async function fetchRecyclerHandovers(recyclerId: string): Promise<Remote
     `/api/recyclers/${encodeURIComponent(recyclerId)}/handovers`,
   );
   return handovers;
+}
+
+/** Current state of this collector's pickup requests. */
+export function fetchPickups(collectorId: string): Promise<PickupUpdate[]> {
+  return apiBase
+    ? remote(`/api/pickups?collectorId=${encodeURIComponent(collectorId)}`)
+    : local((s) => pickupsFor(s, collectorId));
+}
+
+/** Recycler inbox: open pickup requests addressed to this facility. */
+export async function fetchPickupRequests(recyclerId: string): Promise<PickupRequestView[]> {
+  if (!apiBase) return local((s) => pickupRequestsFor(s, recyclerId));
+  const { requests } = await remote<{ requests: PickupRequestView[] }>(
+    `/api/recyclers/${encodeURIComponent(recyclerId)}/requests`,
+  );
+  return requests;
 }
 
 /** Demo helper: wipe the local mock server (used by "Reset demo"). */

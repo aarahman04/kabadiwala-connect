@@ -647,6 +647,50 @@ function check(condition, message) {
 function isCategory(c) {
 	return MATERIAL_CATEGORIES.includes(c);
 }
+const isSmallImage = (t) => typeof t === "string" && t.startsWith("data:image/") && t.length < 6e4;
+const PICKUP_ORDER = [
+	"requested",
+	"accepted",
+	"on_the_way",
+	"arriving",
+	"completed"
+];
+const PICKUP_TERMINAL = ["completed", "declined"];
+/** How far along a pickup is; terminal states outrank everything. */
+function pickupRank(p) {
+	if (!p) return -1;
+	return PICKUP_TERMINAL.includes(p.status) ? 100 : PICKUP_ORDER.indexOf(p.status);
+}
+/** Forward-only transition. Returns the same object when the move isn't allowed. */
+function advancePickup(current, next, at) {
+	if (!current) return next === "requested" ? {
+		status: "requested",
+		requestedAt: at,
+		updatedAt: at,
+		history: [{
+			status: next,
+			at
+		}]
+	} : current;
+	if (PICKUP_TERMINAL.includes(current.status) || current.status === next) return current;
+	if (!(next === "declined" ? current.status === "requested" || current.status === "accepted" : PICKUP_ORDER.indexOf(next) > PICKUP_ORDER.indexOf(current.status))) return current;
+	return {
+		...current,
+		status: next,
+		updatedAt: at,
+		history: [...current.history, {
+			status: next,
+			at
+		}]
+	};
+}
+/** Keep whichever copy is further along (server updates vs a stale local copy). */
+function mergePickup(a, b) {
+	return pickupRank(b) > pickupRank(a) ? b : a;
+}
+const cleanPhone = (p) => {
+	return p?.replace(/[^\d+ ]/g, "").trim().slice(0, 20) || void 0;
+};
 /** Validate and apply one client write. Mutates `s`. */
 async function applyOp(s, op, now = Date.now()) {
 	switch (op.kind) {
@@ -656,6 +700,7 @@ async function applyOp(s, op, now = Date.now()) {
 			check(isCategory(lot.category), "unknown material category");
 			check(lot.approxWeightKg > 0 && lot.approxWeightKg <= MAX_WEIGHT_KG, "weight out of range");
 			check(lot.estimatedValue >= 0, "estimatedValue must be ≥ 0");
+			check(lot.photoThumbnail == null || isSmallImage(lot.photoThumbnail), "photoThumbnail must be a small data:image URL");
 			s.lots[lot.lotId] = {
 				...lot,
 				status: s.lots[lot.lotId]?.status === "paid" ? "paid" : lot.status
@@ -671,19 +716,23 @@ async function applyOp(s, op, now = Date.now()) {
 			check(recycler, `unknown recycler ${tx.recyclerId}`);
 			check(recycler.authorizationStatus === "authorized", "recycler is not authorized");
 			const existing = s.transactions[tx.transactionId];
-			s.transactions[tx.transactionId] = existing?.transactionStatus === "confirmed" ? {
+			const merged = existing?.transactionStatus === "confirmed" ? {
 				...tx,
 				transactionStatus: "confirmed",
 				finalPrice: existing.finalPrice,
 				paymentStatus: existing.paymentStatus !== "pending" ? existing.paymentStatus : tx.paymentStatus
-			} : tx;
+			} : { ...tx };
+			const pickup = mergePickup(existing?.pickup, tx.pickup);
+			if (pickup) merged.pickup = pickup;
+			else delete merged.pickup;
+			s.transactions[tx.transactionId] = merged;
 			audit(s, op.kind, tx.transactionId, now);
 			break;
 		}
 		case "upsertTraceability": {
 			const r = op.record;
 			check(REF_PATTERN.test(r.handoverReference), "bad handover reference");
-			check(!r.photoThumbnails || r.photoThumbnails.length <= 4 && r.photoThumbnails.every((t) => typeof t === "string" && t.startsWith("data:image/") && t.length < 6e4), "photo thumbnails must be ≤4 small data:image URLs");
+			check(!r.photoThumbnails || r.photoThumbnails.length <= 4 && r.photoThumbnails.every(isSmallImage), "photo thumbnails must be ≤4 small data:image URLs");
 			check(await verifyHandover({
 				lotId: r.lotId,
 				weight: r.weight,
@@ -717,6 +766,34 @@ async function applyOp(s, op, now = Date.now()) {
 			check(tx, `unknown transaction ${op.transactionId}`);
 			if (tx.paymentStatus === "pending") tx.paymentStatus = op.paymentStatus;
 			tx.finalPrice ??= tx.quotedPrice;
+			audit(s, op.kind, op.transactionId, now);
+			break;
+		}
+		case "requestPickup": {
+			const tx = s.transactions[op.transactionId];
+			check(tx, `unknown transaction ${op.transactionId}`);
+			check(s.recyclers.find((r) => r.recyclerId === tx.recyclerId)?.pickupAvailable, "this recycler does not offer pickup");
+			check(tx.transactionStatus !== "confirmed", "handover already confirmed");
+			const next = advancePickup(tx.pickup?.status === "declined" ? void 0 : tx.pickup, "requested", op.at);
+			if (next && next !== tx.pickup) tx.pickup = {
+				...next,
+				contactPhone: cleanPhone(op.contactPhone)
+			};
+			audit(s, op.kind, op.transactionId, now);
+			break;
+		}
+		case "updatePickup": {
+			const tx = s.transactions[op.transactionId];
+			check(tx, `unknown transaction ${op.transactionId}`);
+			check(tx.recyclerId === op.recyclerId, "this request was sent to a different recycler");
+			check(tx.pickup, "no pickup was requested");
+			check([
+				"accepted",
+				"declined",
+				"on_the_way",
+				"arriving"
+			].includes(op.status), "bad pickup status");
+			tx.pickup = advancePickup(tx.pickup, op.status, op.at);
 			audit(s, op.kind, op.transactionId, now);
 			break;
 		}
@@ -766,6 +843,7 @@ function confirm(s, c, now) {
 	if (!tx) return;
 	tx.transactionStatus = "confirmed";
 	tx.finalPrice = c.finalPrice ?? tx.finalPrice ?? tx.quotedPrice;
+	if (tx.pickup) tx.pickup = advancePickup(tx.pickup, "completed", c.confirmedAt);
 	if (tx.paymentStatus === "pending") tx.paymentStatus = c.paymentStatus;
 	const category = s.lots[record.lotId]?.category;
 	if (!category || !(record.weight > 0)) return;
@@ -841,6 +919,20 @@ function handoverByReference(s, reference) {
 function handoversForRecycler(s, recyclerId) {
 	return Object.values(s.traceability).filter((r) => r.recyclerId === recyclerId).sort((a, b) => b.timestamp - a.timestamp).map((r) => handoverByReference(s, r.handoverReference));
 }
+/** Current pickup state of every request this collector has made. */
+function pickupsFor(s, collectorId) {
+	return Object.values(s.transactions).filter((t) => t.collectorId === collectorId && t.pickup).map((t) => ({
+		transactionId: t.transactionId,
+		pickup: t.pickup
+	}));
+}
+/** Open pickup requests addressed to a recycler (newest first). */
+function pickupRequestsFor(s, recyclerId) {
+	return Object.values(s.transactions).filter((t) => t.recyclerId === recyclerId && t.pickup && !PICKUP_TERMINAL.includes(t.pickup.status) && t.transactionStatus !== "confirmed").sort((a, b) => b.pickup.requestedAt - a.pickup.requestedAt).map((t) => ({
+		transaction: t,
+		lot: s.lots[t.lotId]
+	}));
+}
 //#endregion
 //#region backend/src/app.ts
 const MAX_BODY_BYTES = 262144;
@@ -895,10 +987,17 @@ function createApp({ store, corsOrigin = "*", adminToken }) {
 				if (!collectorId) return json(res, 400, { error: "collectorId required" });
 				return json(res, 200, updatesFor(await current(), collectorId));
 			}
+			if (req.method === "GET" && path === "/api/pickups") {
+				const collectorId = url.searchParams.get("collectorId");
+				if (!collectorId) return json(res, 400, { error: "collectorId required" });
+				return json(res, 200, pickupsFor(await current(), collectorId));
+			}
 			let m = path.match(/^\/api\/handovers\/(KC-[0-9A-Fa-f]{6})$/);
 			if (req.method === "GET" && m) return json(res, 200, { handover: handoverByReference(await current(), m[1].toUpperCase()) });
 			m = path.match(/^\/api\/recyclers\/([\w-]+)\/handovers$/);
 			if (req.method === "GET" && m) return json(res, 200, { handovers: handoversForRecycler(await current(), m[1]) });
+			m = path.match(/^\/api\/recyclers\/([\w-]+)\/requests$/);
+			if (req.method === "GET" && m) return json(res, 200, { requests: pickupRequestsFor(await current(), m[1]) });
 			m = path.match(/^\/api\/export\/(\w+)\.(json|csv)$/);
 			if (req.method === "GET" && m) {
 				const rows = exportDataset(await current(), m[1]);
@@ -1006,6 +1105,8 @@ function exportDataset(s, name) {
 				dateTime: iso(t.dateTime),
 				paymentStatus: t.paymentStatus,
 				transactionStatus: t.transactionStatus,
+				pickupStatus: t.pickup?.status,
+				pickupRequestedAt: iso(t.pickup?.requestedAt),
 				anomaly: s.flags[t.transactionId]?.reason
 			};
 		});
@@ -1269,6 +1370,16 @@ create table if not exists kc_transactions (
 );
 create index if not exists kc_transactions_collector on kc_transactions (collector_id);
 create index if not exists kc_transactions_recycler on kc_transactions (recycler_id);
+
+-- Pickup lifecycle (requested -> accepted -> on_the_way -> arriving -> completed | declined).
+-- Added with ALTER so databases created before pickups existed are upgraded in place.
+alter table kc_transactions add column if not exists pickup_status text
+  generated always as (data#>>'{pickup,status}') stored;
+alter table kc_transactions add column if not exists pickup_requested_at timestamptz
+  generated always as (kc_ms(data#>'{pickup,requestedAt}')) stored;
+alter table kc_transactions add column if not exists pickup_updated_at timestamptz
+  generated always as (kc_ms(data#>'{pickup,updatedAt}')) stored;
+create index if not exists kc_transactions_pickup on kc_transactions (recycler_id, pickup_status);
 `
 	},
 	{

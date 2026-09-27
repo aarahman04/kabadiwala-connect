@@ -51,6 +51,14 @@
 
 Choosing a recycler calls `selectRecycler`, which creates the transaction as `pending`.
 
+**Pickup** (the statement's "pickup availability"). This only applies when the chosen recycler offers pickup; otherwise the collector drops off.
+- The collector taps **Request pickup**, with an optional phone number. `requestPickup` sets `transaction.pickup` locally and queues a `requestPickup` op.
+- The recycler's inbox (`GET /api/recyclers/:id/requests`, polled every 15 s) shows the photo thumbnail, category, weight, the quoted ₹, a map link and 📞.
+- The recycler's `updatePickup` ops move it forward: accepted | declined → on_the_way → arriving. It becomes `completed` on confirmation.
+- The collector pulls `GET /api/pickups`, and `mergePickup` keeps the furthest-along copy. Each change fires `subscribePickupChanges`, and a system notification is shown (`utils/notify.ts`).
+- The handover itself is unchanged and can be done at any time.
+- The state machine is `advancePickup` in `serverCore.ts`, shared by client and server.
+
 **Handover** (works offline):
 - GPS: the real fix, or an approximate one within about 10 s.
 - `completeHandover` creates the `TraceabilityRecord`:

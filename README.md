@@ -57,7 +57,7 @@ Full steps are in **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. In short:
 
 Tested with two separate Chrome profiles against the built server; they share no storage, so they behave like two phones. The judge can hold the recycler phone.
 
-1. **Recycler phone:** open `<app-url>/?role=recycler`, then choose the facility, e.g. *Sitabuldi Electronics Scrap Hub*.
+1. **Recycler phone:** open the app and choose **I run a recycling facility**, then pick the facility. Use one that offers pickup, e.g. *Vidarbha E-Waste Solutions*. Allow notifications.
 2. **Collector phone** (airplane mode is fine):
    - Tap **Sell**, take a photo, tap **Circuit boards**.
    - Optionally tap *Broken* and *Shops*. These fill the dataset's condition and source fields.
@@ -70,6 +70,18 @@ Tested with two separate Chrome profiles against the built server; they share no
 5. **Collector:** turn airplane mode off. The lot flips to ✅ *Confirmed by Sitabuldi…*, and **Earnings** shows the recycler's name.
 6. **Recycler:** open **My buying rates**, change PCB to `199` and tap **Save rates**. After the collector syncs, the match screen ranks with the new rate. The change is also a new row in the price dataset.
 7. **Datasets:** the recycler view has CSV download links for all datasets. You can also open `https://<api-domain>/api/export/transactions.csv` in any browser.
+
+### Pickup variant (recycler comes to the collector)
+
+1. **Collector:**
+   - Tap **Sell** → take a photo → **Wires & cables** → **Estimated value** → **Find authorized recyclers**.
+   - **Choose** *Vidarbha E-Waste Solutions*; it shows 🚚 Pickup available.
+   - Optionally enter a phone number, then tap **🚚 Request pickup**. The screen shows ⏳ *Request sent*.
+2. **Recycler:** the request appears under **🚚 Pickup requests** (within 15 s, or tap ↻ Refresh), and a notification pops up. It shows the photo, category, weight, ≈ ₹, 📍 map and 📞 call. Tap **✅ Accept**.
+3. **Collector:** the screen shows *✅ Accepted by the recycler*, with a notification and a 📞 Call button.
+4. **Recycler:** tap **🛵 On my way**, then **📍 Arriving soon**. The collector sees each step and gets a notification.
+5. **At the door:** the collector takes the handover photo and taps **Create handover record**. The recycler looks up the code, pays, and taps **Confirm handover**.
+6. The request disappears from the recycler's inbox. The collector's lot shows ✅ Confirmed · Paid, and Earnings updates.
 
 ## Contingency box — if it breaks live
 

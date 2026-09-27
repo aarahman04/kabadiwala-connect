@@ -112,6 +112,15 @@ select p.category, round(p.kg, 1) as kg,
 from platform p join informal i using (category)
 order by p.category;
 
+-- 11b. Pickup requests: open ones per recycler, and how fast recyclers respond.
+select r.name as recycler, t.pickup_status, count(*) as requests,
+       round(avg(extract(epoch from (t.pickup_updated_at - t.pickup_requested_at)) / 60)::numeric, 1) as avg_minutes_to_latest_step
+from kc_transactions t
+join kc_recyclers r using (recycler_id)
+where t.pickup_status is not null
+group by r.name, t.pickup_status
+order by r.name, t.pickup_status;
+
 -- 12. Audit trail: every accepted write, newest first.
 select at, kind, ref from kc_audit order by seq desc limit 100;
 

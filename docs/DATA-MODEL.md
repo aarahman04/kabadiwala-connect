@@ -37,6 +37,7 @@ Its RLS lets a user read and update only their own row, and they can't make them
 - Traceability: `pending_confirmation → confirmed`
 - Ledger entry: `due/pending` until the handover is confirmed and paid, then `earning/settled`. The collector's "cash received" toggle also settles it.
 - Payment: `pending | paid_cash | paid_digital`. Cash is first-class.
+- Pickup (`Transaction.pickup`): `requested → accepted → on_the_way → arriving → completed`, or `declined` from requested/accepted. A declined request can be re-sent. The history of every step, with timestamps, is kept in `pickup.history`. The server refuses pickups for drop-off-only recyclers and updates from any facility other than the chosen one.
 
 ## Sync ops (`SyncOp`, client → `POST /api/ops`)
 
@@ -47,6 +48,8 @@ Its RLS lets a user read and update only their own row, and they can't make them
 | `upsertTraceability` | handover created | **SHA-256 re-computed, mismatch rejected**; ≤ 4 thumbnails, each < 60 KB; applies a held confirmation |
 | `confirmHandover` | recycler confirms | stored; applied to the record and transaction if known; adds a price row; flags anomalies |
 | `markPaid` | collector marks cash/digital received | first payment wins |
+| `requestPickup` | collector taps Request pickup | recycler must offer pickup; an active request is a no-op; the phone number is sanitized |
+| `updatePickup` | recycler taps Accept / Decline / On my way / Arriving soon | only the chosen recycler; forward-only |
 | `updateRecyclerRates` | recycler saves rates | updates the recycler; each rate becomes a dated price row |
 
 ## Anomaly rules
@@ -58,4 +61,5 @@ Its RLS lets a user read and update only their own row, and they can't make them
 
 - Collectors are identified by a random device UUID only; there's no name or phone.
 - Exports (`/api/export/*`) replace collector IDs with salted-hash pseudonyms (`C-xxxxxxxxxx`).
-- Full photos never leave the phone; only ~200 px thumbnails sync.
+- Full photos never leave the phone; only ~160–200 px thumbnails sync (`MaterialLot.photoThumbnail`, `TraceabilityRecord.photoThumbnails`).
+- The pickup phone number is optional, sent only for that request, and **never exported**.

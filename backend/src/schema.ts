@@ -195,6 +195,16 @@ create table if not exists kc_transactions (
 );
 create index if not exists kc_transactions_collector on kc_transactions (collector_id);
 create index if not exists kc_transactions_recycler on kc_transactions (recycler_id);
+
+-- Pickup lifecycle (requested -> accepted -> on_the_way -> arriving -> completed | declined).
+-- Added with ALTER so databases created before pickups existed are upgraded in place.
+alter table kc_transactions add column if not exists pickup_status text
+  generated always as (data#>>'{pickup,status}') stored;
+alter table kc_transactions add column if not exists pickup_requested_at timestamptz
+  generated always as (kc_ms(data#>'{pickup,requestedAt}')) stored;
+alter table kc_transactions add column if not exists pickup_updated_at timestamptz
+  generated always as (kc_ms(data#>'{pickup,updatedAt}')) stored;
+create index if not exists kc_transactions_pickup on kc_transactions (recycler_id, pickup_status);
 `,
   },
   {

@@ -20,7 +20,7 @@ Object.defineProperty(globalThis.navigator, 'onLine', { get: () => online, confi
 
 const { getDB } = await import('./db');
 const { ensureSeeded } = await import('./seed');
-const { createLot, selectRecycler, completeHandover, recyclerConfirm, markPaid } = await import('./actions');
+const { createLot, selectRecycler, completeHandover, recyclerConfirm, markPaid, requestPickup, updatePickup } = await import('./actions');
 const { runSync } = await import('./syncRunner');
 const { lookupHandover } = await import('./recyclerLookup');
 
@@ -121,6 +121,30 @@ describe('offline handover → sync → confirmed', () => {
     online = true;
     await runSync();
   }, 30_000);
+
+  it('pickup request made offline reaches the recycler; their progress flows back', { timeout: 30_000 }, async () => {
+    const db = await getDB();
+    online = false;
+    const recycler = (await db.get('recyclers', 'rc-02'))!;
+    const lot = await createLot({ collectorId, imageBlob: new Blob(), category: 'LCD_PANEL', approxWeightKg: 8, estimatedValue: 150 });
+    const tx = await selectRecycler(lot.lotId, recycler, { lat: 21.14, lng: 79.08 });
+    await requestPickup(lot.lotId, '98765 43210');
+    await requestPickup(lot.lotId); // double tap
+    expect((await db.getAll('syncQueue')).filter((q) => q.op.kind === 'requestPickup')).toHaveLength(1);
+    expect((await db.get('transactions', tx.transactionId))!.pickup?.status).toBe('requested');
+
+    online = true;
+    await runSync();
+    const { fetchPickupRequests } = await import('../services/api');
+    expect((await fetchPickupRequests('rc-02')).map((r) => r.transaction.transactionId)).toContain(tx.transactionId);
+
+    await updatePickup(tx.transactionId, 'rc-02', 'accepted');
+    await updatePickup(tx.transactionId, 'rc-02', 'on_the_way');
+    await runSync();
+    const local = (await db.get('transactions', tx.transactionId))!;
+    expect(local.pickup?.status).toBe('on_the_way');
+    expect(local.pickup?.contactPhone).toBe('98765 43210');
+  });
 
   it('confirmation that reaches the server before the handover still matches', async () => {
     const db = await getDB();

@@ -9,7 +9,7 @@ All Tier 1 and Tier 2 features from the build brief work:
 - en/hi/mr with spoken prices;
 - a safety screen, a price board, and anomaly flags.
 
-A shared backend (`backend/`) gives real multi-device sync, so the collector and recycler can be two phones. Collector and recycler roles are chosen on first launch. **There is no sign-in yet.** The Postgres schema is split into numbered Supabase SQL files in `database/`, and a `kc_profiles` table is ready for Google auth. All of this is built and tested locally. **Deployment wiring (Railway root dir, Supabase env vars, Vercel `VITE_API_URL`) is waiting on the owner. See "Next steps".**
+A shared backend (`backend/`) gives real multi-device sync, so the collector and recycler can be two phones. The **pickup flow** is built: the collector requests a pickup, and the recycler accepts, then taps On my way, then Arriving soon; the collector gets each step as a status update and a notification. Collector and recycler roles are chosen on first launch. **There is no sign-in yet.** The Postgres schema is split into numbered Supabase SQL files in `database/`, and a `kc_profiles` table is ready for Google auth. All of this is built and tested locally. **Deployment wiring (Railway root dir, Supabase env vars, Vercel `VITE_API_URL`) is waiting on the owner. See "Next steps".**
 
 ## Timeline
 
@@ -18,23 +18,33 @@ A shared backend (`backend/`) gives real multi-device sync, so the collector and
 | `c203ea4` | Initial build: PWA, IndexedDB datasets, pure logic, mock API, all screens, 27 tests |
 | `247ec79` | QA hardening in real Chrome: English voice fallback when no hi/mr TTS voice, GPS hard timeout (ignored prompt hung forever), sync-status text, cross-tab simulate-offline |
 | `f5fa01a` | Shared backend + recycler desk + dataset completeness: `serverCore.ts` shared rules, Node API, thumbnails, rate publishing, condition/source fields, final-price anomaly, duplicate-tap payment fix |
-| _this session_ | `backend/` folder (Railway root dir, committed bundle), relational Postgres tables, numbered `database/*.sql` for Supabase incl. `01_users.sql`, first-launch role chooser, `docs/` |
+| `9821e3f` | `backend/` folder (Railway root dir, committed bundle), relational Postgres tables, numbered `database/*.sql` for Supabase incl. `01_users.sql`, first-launch role chooser, `docs/` |
+| _latest_ | **Pickup flow**:
+- collector "Request pickup" with an optional phone;
+- recycler inbox: Accept/Decline → On my way → Arriving soon, with a map link and 📞;
+- status updates and system notifications on both phones, polling every 15 s while online;
+- lot photo thumbnails;
+- `kc_transactions` pickup columns (ALTER-upgrades existing tables), pickups query 11b.
+
+Also fixed: a write made during an in-flight sync waited for the next trigger; `runSync` now runs one more pass. |
 
 ## Verified (and how)
 
-- **Unit and integration tests:** 38 tests in total. `npm test` runs 37. The 38th checks that the backend survives a database restart and runs only against real Postgres (it needs `KC_TEST_DATABASE_URL`). What they cover:
+- **Unit and integration tests:** 41 tests in total. `npm test` runs 40. The 38th checks that the backend survives a database restart and runs only against real Postgres (it needs `KC_TEST_DATABASE_URL`). What they cover:
   - the pure logic;
   - the full offline→sync flow on fake-indexeddb;
   - double-tap safety;
-  - HTTP round-trips between two simulated devices;
+  - HTTP round-trips between two simulated devices, including the pickup state machine;
   - the bundle-freshness check.
 - **Real Chrome (headless, phone viewport), scripted click-throughs:**
   - the whole demo, including an **offline cold reload served by the service worker**;
   - GPS granted, denied, and a prompt that is never answered;
   - the English speech fallback;
-  - **two isolated browser profiles against the real backend** (the two-phone flow, a confirmation that arrives before the collector's record, recycler rate publishing).
+  - **two isolated browser profiles against the real backend**: the two-phone flow, a confirmation that arrives before the collector's record, recycler rate publishing;
+  - **the full pickup flow** on two profiles, with notifications captured on both sides.
 - **Real Postgres (PGlite, Postgres 18 in WASM, over the `pg` wire protocol):**
   - all numbered SQL files run twice (idempotent), and the users trigger works;
+  - an existing `kc_transactions` table gains the pickup columns, backfilled;
   - the backend API suite passes, and data survives a database restart;
   - `database/13_useful_queries.sql` blocks all execute.
 - **The `backend/` folder in isolation:** `npm ci` and `npm start` work, and it creates the schema and seeds a real Postgres.
@@ -73,6 +83,7 @@ A shared backend (`backend/`) gives real multi-device sync, so the collector and
 | Gap | Note |
 |---|---|
 | Image classification | Not built. Needs a model (see D-10); the category grid is the plug-in point |
+| Notifications when the app is fully closed | Needs Web Push (VAPID + a push service). Today they work while the app is open or in the background |
 | Voice input ("say material, hear rate") | Not built. Browser speech recognition needs the network on most Android phones |
 | Per-location price board | Single city (Nagpur) seed data |
 | Field research, unit economics, AI data description | **Team deliverables, not code.** `database/13_useful_queries.sql` #11 is a unit-economics scaffold |

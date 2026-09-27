@@ -51,3 +51,7 @@ Short records of why things are the way they are. Add new entries at the bottom.
 - **A real recycler dataset** matters more for credibility than the classifier: the CPCB and Maharashtra PCB published lists of authorized e-waste dismantlers/recyclers, which would replace the fictional `seedData.ts` recyclers.
 
 **D-11 The role chooser is stored per device, and `?role=` overrides it.** The URL override keeps shareable demo links working (`/?role=recycler`) and needs no auth.
+
+**D-12 Who the users are (clarified with the owner).** The app is for the **informal collector (kabadiwala)** selling to an **authorized recycler/aggregator**, as the problem statement says. It is **not** a household-to-kabadiwala scrap marketplace; the analysis explicitly warns that a generic marketplace is the trap. The owner's request / accept / on-the-way idea was adopted as the statement's *pickup availability*: the recycler's facility comes to the collector.
+
+**D-13 Notifications without a push service.** Status changes reach the other phone by polling every 15 s while online. They show as system notifications via `ServiceWorkerRegistration.showNotification`, which works while the app is open or in the background. Delivery to a fully closed app needs Web Push (VAPID keys + a push subscription endpoint on the backend). That was out of scope for the prototype.

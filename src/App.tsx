@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MaterialCategory, MaterialLot } from './data/models';
-import { resetLocalData } from './data/actions';
+import { requestPickup, resetLocalData, updatePickup } from './data/actions';
 import {
   checkFinalPrice,
   getRecyclerIdentity,
   loadIncoming,
+  loadPickupRequests,
   lookupHandover,
   saveRecyclerRates,
   setRecyclerIdentity,
   submitConfirmation,
   type IncomingHandover,
+  type PickupInboxItem,
 } from './data/recyclerLookup';
-import { startSyncTriggers } from './data/syncRunner';
-import { getSetting, setSetting } from './data/db';
+import { runSync, startSyncTriggers, subscribePickupChanges } from './data/syncRunner';
+import { getDB, getSetting, setSetting } from './data/db';
 import { Header } from './components/Header';
 import { useCollector } from './hooks/useCollector';
 import { useLedger } from './hooks/useLedger';
@@ -41,6 +43,7 @@ import { Safety } from './screens/Safety';
 import { Valuation } from './screens/Valuation';
 import { getPosition, type PositionResult } from './utils/geolocation';
 import { thumbnailDataUrl } from './utils/image';
+import { ensureNotificationPermission, notify } from './utils/notify';
 import { speak, spellCode } from './utils/speech';
 
 type LotStep = 'valuation' | 'match' | 'handover';
@@ -121,7 +124,7 @@ function Shell({ collectorId }: { collectorId: string }) {
 function RecyclerApp({ online, onSwitchToCollector }: { online: boolean; onSwitchToCollector: () => void }) {
   const { recyclers } = useRecyclers();
   const [recyclerId, setRecyclerId] = useState<string>();
-  const [incoming, setIncoming] = useState<IncomingHandover[] | null>(null);
+  const [incoming, setIncoming] = useState<IncomingHandover[] | null | undefined>(undefined);
   const [picked, setPicked] = useState<string>();
   const authorized = useMemo(() => recyclers.filter((r) => r.authorizationStatus === 'authorized'), [recyclers]);
   const me = authorized.find((r) => r.recyclerId === recyclerId);
@@ -130,13 +133,44 @@ function RecyclerApp({ online, onSwitchToCollector }: { online: boolean; onSwitc
     void getRecyclerIdentity().then(setRecyclerId);
   }, []);
 
+  const [requests, setRequests] = useState<PickupInboxItem[] | null | undefined>(undefined);
+  const seenRequests = useRef<Set<string> | null>(null);
+  const { t, categoryName, formatNumber } = useI18n();
+
   const refresh = useCallback(async () => {
-    if (recyclerId) setIncoming(await loadIncoming(recyclerId));
-  }, [recyclerId]);
+    if (!recyclerId) return;
+    const [inc, reqs] = await Promise.all([loadIncoming(recyclerId), loadPickupRequests(recyclerId)]);
+    setIncoming(inc);
+    setRequests(reqs);
+    if (reqs) {
+      // Alert on requests that weren't there last time (not on first load).
+      const fresh = seenRequests.current ? reqs.filter((r) => !seenRequests.current!.has(r.transactionId)) : [];
+      seenRequests.current = new Set(reqs.map((r) => r.transactionId));
+      for (const r of fresh) {
+        void notify(
+          t('newRequestTitle'),
+          t('requestSummary', {
+            category: r.category ? categoryName(r.category) : '—',
+            weight: formatNumber(r.weight ?? 0, 1),
+            amount: formatNumber(r.quotedPrice),
+          }),
+          r.transactionId,
+        );
+      }
+    }
+  }, [recyclerId, t, categoryName, formatNumber]);
 
   useEffect(() => {
+    seenRequests.current = null;
+  }, [recyclerId]);
+
+  // Poll while online so new requests show up without a manual refresh.
+  useEffect(() => {
     void refresh();
-  }, [refresh, online]);
+    if (!online || !recyclerId) return;
+    const id = window.setInterval(() => void refresh(), 15_000);
+    return () => window.clearInterval(id);
+  }, [refresh, online, recyclerId]);
 
   return (
     <>
@@ -160,6 +194,14 @@ function RecyclerApp({ online, onSwitchToCollector }: { online: boolean; onSwitc
         onSelectRecycler={(id) => {
           setRecyclerId(id);
           void setRecyclerIdentity(id);
+          void ensureNotificationPermission();
+        }}
+        requests={requests}
+        onUpdatePickup={async (transactionId, status) => {
+          if (!recyclerId) return;
+          await updatePickup(transactionId, recyclerId, status);
+          await runSync();
+          await refresh();
         }}
         incoming={incoming}
         onRefreshIncoming={() => void refresh()}
@@ -182,6 +224,7 @@ function CollectorApp({ collectorId, onSwitchToRecycler }: { collectorId: string
   const { board, prices } = usePrices();
   const ledger = useLedger();
   const positionRef = useRef<Promise<PositionResult> | null>(null);
+  usePickupWatcher();
 
   const go = (r: Route) => {
     setRoute(r);
@@ -195,9 +238,11 @@ function CollectorApp({ collectorId, onSwitchToRecycler }: { collectorId: string
       positionRef.current ?? getPosition(3000),
       new Promise<PositionResult>((r) => setTimeout(() => r({ location: DEFAULT_ORIGIN, approximate: true }), 1500)),
     ]);
+    const photoThumbnail = await thumbnailDataUrl(result.imageBlob, 160);
     const lot = await createLot({
       collectorId,
       ...result,
+      photoThumbnail,
       estimatedValue: valueLot(result.approxWeightKg, board[result.category]),
       location: position.approximate ? undefined : position.location,
     });
@@ -433,6 +478,13 @@ function LotFlow({
             )
           : null
       }
+      pickupQueued={sync.queue.some(
+        (q) => q.op.kind === 'requestPickup' && q.op.transactionId === transaction.transactionId,
+      )}
+      onRequestPickup={async (contactPhone) => {
+        void ensureNotificationPermission();
+        await requestPickup(lot.lotId, contactPhone);
+      }}
       onCreate={async (photo) => {
         if (!position) return;
         const thumbnails = (await Promise.all([lot.imageBlob, photo].map((b) => thumbnailDataUrl(b)))).filter(
@@ -459,4 +511,32 @@ function LotFlow({
 function defaultStep(lot: MaterialLot | undefined, hasTransaction: boolean): LotStep {
   if (!lot || lot.status === 'draft' || lot.status === 'valued') return 'valuation';
   return hasTransaction ? 'handover' : 'match';
+}
+
+const ACTIVE_PICKUP = ['requested', 'accepted', 'on_the_way', 'arriving'];
+
+/**
+ * Collector side: while any pickup is in progress, sync every 15 s so the
+ * recycler's accept / on-the-way / arriving shows up, and raise a notification
+ * for each change.
+ */
+function usePickupWatcher() {
+  const { t } = useI18n();
+  useEffect(() => {
+    const unsubscribe = subscribePickupChanges(async (changes) => {
+      const db = await getDB();
+      for (const c of changes) {
+        const recycler = await db.get('recyclers', c.recyclerId);
+        void notify(t('pickupUpdateTitle', { name: recycler?.name ?? '' }), t(`pickup_${c.status}`), c.transactionId);
+      }
+    });
+    const id = window.setInterval(async () => {
+      const txs = await (await getDB()).getAll('transactions');
+      if (txs.some((tx) => tx.pickup && ACTIVE_PICKUP.includes(tx.pickup.status))) void runSync();
+    }, 15_000);
+    return () => {
+      unsubscribe();
+      window.clearInterval(id);
+    };
+  }, [t]);
 }

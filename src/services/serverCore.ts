@@ -8,6 +8,8 @@ import type {
   ConfirmationPayload,
   MaterialCategory,
   MaterialLot,
+  PickupRequest,
+  PickupStatus,
   PriceEntry,
   Recycler,
   SyncOp,
@@ -88,6 +90,45 @@ function isCategory(c: unknown): c is MaterialCategory {
   return MATERIAL_CATEGORIES.includes(c as MaterialCategory);
 }
 
+const isSmallImage = (t: unknown) => typeof t === 'string' && t.startsWith('data:image/') && t.length < 60_000;
+
+// ---------------------------------------------------------------------------
+// Pickup lifecycle (pure; also used by the client to merge pulled updates)
+// ---------------------------------------------------------------------------
+
+const PICKUP_ORDER: PickupStatus[] = ['requested', 'accepted', 'on_the_way', 'arriving', 'completed'];
+const PICKUP_TERMINAL: PickupStatus[] = ['completed', 'declined'];
+
+/** How far along a pickup is; terminal states outrank everything. */
+export function pickupRank(p: PickupRequest | undefined): number {
+  if (!p) return -1;
+  return PICKUP_TERMINAL.includes(p.status) ? 100 : PICKUP_ORDER.indexOf(p.status);
+}
+
+/** Forward-only transition. Returns the same object when the move isn't allowed. */
+export function advancePickup(current: PickupRequest | undefined, next: PickupStatus, at: number): PickupRequest | undefined {
+  if (!current) {
+    return next === 'requested' ? { status: 'requested', requestedAt: at, updatedAt: at, history: [{ status: next, at }] } : current;
+  }
+  if (PICKUP_TERMINAL.includes(current.status) || current.status === next) return current;
+  const allowed =
+    next === 'declined'
+      ? current.status === 'requested' || current.status === 'accepted'
+      : PICKUP_ORDER.indexOf(next) > PICKUP_ORDER.indexOf(current.status);
+  if (!allowed) return current;
+  return { ...current, status: next, updatedAt: at, history: [...current.history, { status: next, at }] };
+}
+
+/** Keep whichever copy is further along (server updates vs a stale local copy). */
+export function mergePickup(a: PickupRequest | undefined, b: PickupRequest | undefined): PickupRequest | undefined {
+  return pickupRank(b) > pickupRank(a) ? b : a;
+}
+
+const cleanPhone = (p?: string) => {
+  const v = p?.replace(/[^\d+ ]/g, '').trim().slice(0, 20);
+  return v || undefined;
+};
+
 // ---------------------------------------------------------------------------
 // Writes
 // ---------------------------------------------------------------------------
@@ -101,6 +142,7 @@ export async function applyOp(s: ServerState, op: SyncOp, now = Date.now()): Pro
       check(isCategory(lot.category), 'unknown material category');
       check(lot.approxWeightKg > 0 && lot.approxWeightKg <= MAX_WEIGHT_KG, 'weight out of range');
       check(lot.estimatedValue >= 0, 'estimatedValue must be ≥ 0');
+      check(lot.photoThumbnail == null || isSmallImage(lot.photoThumbnail), 'photoThumbnail must be a small data:image URL');
       s.lots[lot.lotId] = { ...lot, status: s.lots[lot.lotId]?.status === 'paid' ? 'paid' : lot.status };
       audit(s, op.kind, lot.lotId, now);
       break;
@@ -114,7 +156,7 @@ export async function applyOp(s: ServerState, op: SyncOp, now = Date.now()): Pro
       check(recycler.authorizationStatus === 'authorized', 'recycler is not authorized');
       const existing = s.transactions[tx.transactionId];
       // Server-side confirmation / payment wins over a stale client copy.
-      s.transactions[tx.transactionId] =
+      const merged: Transaction =
         existing?.transactionStatus === 'confirmed'
           ? {
               ...tx,
@@ -122,7 +164,12 @@ export async function applyOp(s: ServerState, op: SyncOp, now = Date.now()): Pro
               finalPrice: existing.finalPrice,
               paymentStatus: existing.paymentStatus !== 'pending' ? existing.paymentStatus : tx.paymentStatus,
             }
-          : tx;
+          : { ...tx };
+      // The recycler drives the pickup on the server; a stale client copy can't rewind it.
+      const pickup = mergePickup(existing?.pickup, tx.pickup);
+      if (pickup) merged.pickup = pickup;
+      else delete merged.pickup;
+      s.transactions[tx.transactionId] = merged;
       audit(s, op.kind, tx.transactionId, now);
       break;
     }
@@ -132,7 +179,7 @@ export async function applyOp(s: ServerState, op: SyncOp, now = Date.now()): Pro
       check(
         !r.photoThumbnails ||
           (r.photoThumbnails.length <= 4 &&
-            r.photoThumbnails.every((t) => typeof t === 'string' && t.startsWith('data:image/') && t.length < 60_000)),
+            r.photoThumbnails.every(isSmallImage)),
         'photo thumbnails must be ≤4 small data:image URLs',
       );
       // Re-derive the fingerprint: a record edited after creation is refused.
@@ -170,6 +217,29 @@ export async function applyOp(s: ServerState, op: SyncOp, now = Date.now()): Pro
       check(tx, `unknown transaction ${op.transactionId}`);
       if (tx.paymentStatus === 'pending') tx.paymentStatus = op.paymentStatus;
       tx.finalPrice ??= tx.quotedPrice;
+      audit(s, op.kind, op.transactionId, now);
+      break;
+    }
+    case 'requestPickup': {
+      const tx = s.transactions[op.transactionId];
+      check(tx, `unknown transaction ${op.transactionId}`);
+      const recycler = s.recyclers.find((r) => r.recyclerId === tx.recyclerId);
+      check(recycler?.pickupAvailable, 'this recycler does not offer pickup');
+      check(tx.transactionStatus !== 'confirmed', 'handover already confirmed');
+      // A declined request can be re-sent; an active one is left alone (idempotent).
+      const base = tx.pickup?.status === 'declined' ? undefined : tx.pickup;
+      const next = advancePickup(base, 'requested', op.at);
+      if (next && next !== tx.pickup) tx.pickup = { ...next, contactPhone: cleanPhone(op.contactPhone) };
+      audit(s, op.kind, op.transactionId, now);
+      break;
+    }
+    case 'updatePickup': {
+      const tx = s.transactions[op.transactionId];
+      check(tx, `unknown transaction ${op.transactionId}`);
+      check(tx.recyclerId === op.recyclerId, 'this request was sent to a different recycler');
+      check(tx.pickup, 'no pickup was requested');
+      check(['accepted', 'declined', 'on_the_way', 'arriving'].includes(op.status), 'bad pickup status');
+      tx.pickup = advancePickup(tx.pickup, op.status, op.at);
       audit(s, op.kind, op.transactionId, now);
       break;
     }
@@ -215,6 +285,7 @@ function confirm(s: ServerState, c: ConfirmationPayload, now: number): void {
   if (!tx) return;
   tx.transactionStatus = 'confirmed';
   tx.finalPrice = c.finalPrice ?? tx.finalPrice ?? tx.quotedPrice;
+  if (tx.pickup) tx.pickup = advancePickup(tx.pickup, 'completed', c.confirmedAt);
   if (tx.paymentStatus === 'pending') tx.paymentStatus = c.paymentStatus;
 
   const lot = s.lots[record.lotId];
@@ -318,4 +389,35 @@ export function handoversForRecycler(s: ServerState, recyclerId: string): Remote
     .filter((r) => r.recyclerId === recyclerId)
     .sort((a, b) => b.timestamp - a.timestamp)
     .map((r) => handoverByReference(s, r.handoverReference)!);
+}
+
+export interface PickupUpdate {
+  transactionId: string;
+  pickup: PickupRequest;
+}
+
+/** Current pickup state of every request this collector has made. */
+export function pickupsFor(s: ServerState, collectorId: string): PickupUpdate[] {
+  return Object.values(s.transactions)
+    .filter((t) => t.collectorId === collectorId && t.pickup)
+    .map((t) => ({ transactionId: t.transactionId, pickup: t.pickup! }));
+}
+
+export interface PickupRequestView {
+  transaction: Transaction;
+  lot?: ServerLot;
+}
+
+/** Open pickup requests addressed to a recycler (newest first). */
+export function pickupRequestsFor(s: ServerState, recyclerId: string): PickupRequestView[] {
+  return Object.values(s.transactions)
+    .filter(
+      (t) =>
+        t.recyclerId === recyclerId &&
+        t.pickup &&
+        !PICKUP_TERMINAL.includes(t.pickup.status) &&
+        t.transactionStatus !== 'confirmed',
+    )
+    .sort((a, b) => b.pickup!.requestedAt - a.pickup!.requestedAt)
+    .map((t) => ({ transaction: t, lot: s.lots[t.lotId] }));
 }
