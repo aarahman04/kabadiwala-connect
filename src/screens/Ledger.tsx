@@ -34,7 +34,7 @@ export function Ledger({ rows, summary, onMarkPaid, onOpenLot }: Props) {
 
       {rows.length === 0 && <p className="empty-state">{t('noLedger')}</p>}
       <ul className="ledger-list flex flex-col gap-2">
-        {rows.map(({ entry, lot, transaction }) => (
+        {rows.map(({ entry, lot, transaction, recyclerName }) => (
           <li key={entry.entryId} className={`ledger-entry rounded border p-2 entry-${entry.status}`}>
             <button type="button" className="w-full text-left" onClick={() => onOpenLot(entry.lotId)}>
               <div className="flex justify-between">
@@ -50,7 +50,10 @@ export function Ledger({ rows, summary, onMarkPaid, onOpenLot }: Props) {
                 </span>
               </div>
               {transaction && (
-                <div className="text-xs opacity-70">{TX_STATUS_NAMES[lang][transaction.transactionStatus]}</div>
+                <div className="text-xs opacity-70">
+                  {recyclerName && `${recyclerName} · `}
+                  {TX_STATUS_NAMES[lang][transaction.transactionStatus]}
+                </div>
               )}
             </button>
             {entry.status === 'pending' && (

@@ -2,3 +2,5 @@ node_modules
 dist
 *.local
 *.tsbuildinfo
+server/dist
+.env

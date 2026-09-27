@@ -6,6 +6,7 @@ import { TX_STATUS_NAMES } from '../i18n/strings';
 import { useI18n } from '../i18n/I18nProvider';
 import { isPaid } from '../logic/sync';
 import type { PositionResult } from '../utils/geolocation';
+import { FLAG_KEYS, type PriceFlag } from './RecyclerConfirm';
 
 interface Props {
   lot: MaterialLot;
@@ -14,6 +15,7 @@ interface Props {
   record?: TraceabilityRecord;
   position: PositionResult | null; // null while locating
   hasUnsyncedChanges: boolean;
+  priceFlag?: PriceFlag | null; // abnormal final price vs market / quote
   onCreate: (photo: Blob) => Promise<void>;
   onSpeakCode: (code: string) => void;
   onMarkPaid: (method: Exclude<PaymentStatus, 'pending'>) => void;
@@ -93,6 +95,11 @@ export function Handover(props: Props) {
           {paid && ` · ${t('paid')} ₹${formatNumber(transaction.finalPrice ?? transaction.quotedPrice)}`}
         </div>
       </div>
+      {props.priceFlag && (
+        <div className="anomaly-badge rounded bg-yellow-100 p-2 text-sm font-bold" role="alert">
+          {t(FLAG_KEYS[props.priceFlag.reason], { pct: props.priceFlag.deviationPct })}
+        </div>
+      )}
       {hasUnsyncedChanges && <p className="offline-note text-sm">💾 {t('savedOffline')}</p>}
 
       <dl className="record-details grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">

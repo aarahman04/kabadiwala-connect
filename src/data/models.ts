@@ -111,6 +111,9 @@ export interface TraceabilityRecord {
   recyclerId: string;
   transactionId: string;
   locationApproximate?: boolean;
+  // Small JPEG data URLs of photoBlobs — the only image data that syncs, so a
+  // recycler on another device can see what was handed over.
+  photoThumbnails?: string[];
 }
 
 export interface CollectorProfile {
@@ -145,7 +148,13 @@ export type SyncOp =
   | { kind: 'upsertTransaction'; transaction: Transaction }
   | { kind: 'upsertTraceability'; record: Omit<TraceabilityRecord, 'photoBlobs'> }
   | { kind: 'confirmHandover'; confirmation: ConfirmationPayload }
-  | { kind: 'markPaid'; transactionId: string; paymentStatus: PaymentStatus };
+  | { kind: 'markPaid'; transactionId: string; paymentStatus: PaymentStatus }
+  | {
+      kind: 'updateRecyclerRates';
+      recyclerId: string;
+      offeredRates: Partial<Record<MaterialCategory, number>>;
+      at: number;
+    };
 
 export interface SyncQueueItem {
   id?: number; // autoIncrement key — preserves write order

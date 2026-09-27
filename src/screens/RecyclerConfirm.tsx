@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { ConfirmationPayload, MaterialCategory, PaymentStatus } from '../data/models';
 import { BlobImage } from '../components/BlobImage';
 import { CATEGORY_ICONS } from '../i18n/strings';
@@ -7,47 +7,84 @@ import { useI18n } from '../i18n/I18nProvider';
 export interface HandoverLookup {
   reference: string;
   source: 'local' | 'server' | 'none';
+  recyclerId?: string;
   category?: MaterialCategory;
   weight?: number;
   quotedPrice?: number;
   timestamp?: number;
-  photos?: Blob[];
+  photos?: Blob[]; // same device: full photos
+  thumbnails?: string[]; // other device: synced thumbnails (data URLs)
   hashValid?: boolean;
   recyclerName?: string;
   alreadyConfirmed?: boolean;
 }
 
+export interface PriceFlag {
+  reason: 'below_market' | 'above_market' | 'far_from_quote';
+  deviationPct: number;
+}
+
 interface Props {
   online: boolean;
+  initialCode?: string;
+  defaultConfirmedBy?: string; // the recycler's facility name, if chosen
   onLookup: (code: string) => Promise<HandoverLookup>;
+  onCheckFinalPrice: (lookup: HandoverLookup, finalPrice: number) => Promise<PriceFlag | null>;
   onConfirm: (confirmation: ConfirmationPayload) => Promise<'sent' | 'queued'>;
   onSwitchToCollector: () => void;
 }
 
+export const FLAG_KEYS = {
+  below_market: 'finalBelowMarket',
+  above_market: 'finalAboveMarket',
+  far_from_quote: 'finalFarFromQuote',
+} as const;
+
 /** Recycler side (`?role=recycler`): enter the collector's code, verify, confirm. */
-export function RecyclerConfirm({ online, onLookup, onConfirm, onSwitchToCollector }: Props) {
+export function RecyclerConfirm(props: Props) {
+  const { online, initialCode, defaultConfirmedBy, onLookup, onCheckFinalPrice, onConfirm, onSwitchToCollector } = props;
   const { t, categoryName, formatNumber, formatDateTime } = useI18n();
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(initialCode ?? '');
   const [lookup, setLookup] = useState<HandoverLookup>();
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [payment, setPayment] = useState<PaymentStatus>('paid_cash');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<'sent' | 'queued'>();
+  const [flag, setFlag] = useState<PriceFlag | null>(null);
+  const confirming = useRef(false); // state updates lag a fast double tap; a ref doesn't
+
+  useEffect(() => {
+    if (initialCode) void runLookup(initialCode);
+  }, [initialCode]);
+
+  useEffect(() => {
+    if (!lookup) return;
+    let alive = true;
+    void onCheckFinalPrice(lookup, Number(price)).then((f) => alive && setFlag(f));
+    return () => {
+      alive = false;
+    };
+  }, [lookup, price, onCheckFinalPrice]);
 
   async function handleLookup(e: FormEvent) {
     e.preventDefault();
+    await runLookup(code);
+  }
+
+  async function runLookup(value: string) {
     setBusy(true);
     setResult(undefined);
-    const found = await onLookup(code);
+    const found = await onLookup(value);
     setLookup(found);
-    setName(found.recyclerName ?? name);
+    setName(defaultConfirmedBy ?? found.recyclerName ?? name);
     setPrice(found.quotedPrice != null ? String(found.quotedPrice) : '');
     setBusy(false);
   }
 
   async function handleConfirm() {
-    if (!lookup) return;
+    if (!lookup || confirming.current) return;
+    confirming.current = true;
     setBusy(true);
     const finalPrice = Number(price);
     const outcome = await onConfirm({
@@ -59,6 +96,7 @@ export function RecyclerConfirm({ online, onLookup, onConfirm, onSwitchToCollect
     });
     setResult(outcome);
     setBusy(false);
+    confirming.current = false;
   }
 
   return (
@@ -109,6 +147,13 @@ export function RecyclerConfirm({ online, onLookup, onConfirm, onSwitchToCollect
                   ))}
                 </div>
               )}
+              {!lookup.photos && lookup.thumbnails && (
+                <div className="flex gap-2">
+                  {lookup.thumbnails.map((src, i) => (
+                    <img key={i} src={src} alt="" className="h-20 w-20 rounded object-cover" />
+                  ))}
+                </div>
+              )}
             </>
           )}
 
@@ -131,6 +176,11 @@ export function RecyclerConfirm({ online, onLookup, onConfirm, onSwitchToCollect
                   onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ''))}
                 />
               </label>
+              {flag && (
+                <div className="anomaly-badge rounded bg-yellow-100 p-2 text-sm font-bold" role="alert">
+                  {t(FLAG_KEYS[flag.reason], { pct: flag.deviationPct })}
+                </div>
+              )}
               <fieldset className="flex flex-wrap gap-3 text-sm">
                 <legend>{t('paymentMethod')}</legend>
                 {(

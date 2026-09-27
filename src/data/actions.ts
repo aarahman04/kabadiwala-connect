@@ -19,7 +19,7 @@ import type {
   Transaction,
 } from './models';
 import { computeHandoverHash, referenceFromHash } from '../logic/hashing';
-import { advanceLotStatus, advanceTxStatus, applyPayment, lotForSync, recordForSync } from '../logic/sync';
+import { advanceLotStatus, advanceTxStatus, applyPayment, isPaid, lotForSync, recordForSync } from '../logic/sync';
 import { requestSync } from './syncRunner';
 
 type WriteTx = IDBPTransaction<KCSchema, StoreName[], 'readwrite'>;
@@ -48,6 +48,8 @@ export interface NewLotInput {
   estimatedValue: number;
   location?: LatLng;
   description?: string;
+  condition?: string;
+  sourceType?: string;
 }
 
 export async function createLot(input: NewLotInput): Promise<MaterialLot> {
@@ -56,6 +58,8 @@ export async function createLot(input: NewLotInput): Promise<MaterialLot> {
     collectorId: input.collectorId,
     category: input.category,
     description: input.description,
+    condition: input.condition,
+    sourceType: input.sourceType,
     imageBlob: input.imageBlob,
     approxWeightKg: input.approxWeightKg,
     estimatedValue: input.estimatedValue,
@@ -108,6 +112,7 @@ export interface HandoverInput {
   photo: Blob;
   location: LatLng;
   locationApproximate: boolean;
+  thumbnails?: string[];
 }
 
 /** Generates the hashed TraceabilityRecord — works fully offline. */
@@ -143,6 +148,7 @@ export async function completeHandover(input: HandoverInput): Promise<Traceabili
     recyclerId: transaction.recyclerId,
     transactionId: transaction.transactionId,
     locationApproximate: input.locationApproximate,
+    photoThumbnails: input.thumbnails?.length ? input.thumbnails : undefined,
   };
   const updatedTx: Transaction = {
     ...transaction,
@@ -181,6 +187,9 @@ export async function markPaid(lotId: string, paymentStatus: Exclude<PaymentStat
     const transaction = await tx.objectStore('transactions').index('byLot').get(lotId);
     const ledger = await tx.objectStore('ledger').index('byLot').get(lotId);
     if (!lot || !transaction || !ledger) throw new Error('nothing to mark paid');
+    // Idempotent: overlapping readwrite transactions run one after another, so
+    // a double tap (or cash-then-digital) sees the first payment and stops here.
+    if (isPaid(transaction.paymentStatus)) return [];
     const next = applyPayment({ lot, transaction, ledger }, paymentStatus);
     await tx.objectStore('materials').put(next.lot);
     await tx.objectStore('transactions').put(next.transaction);
@@ -202,7 +211,14 @@ export async function markPaid(lotId: string, paymentStatus: Exclude<PaymentStat
  * syncs, which is exactly the flow the demo shows.
  */
 export async function recyclerConfirm(confirmation: ConfirmationPayload): Promise<void> {
-  await writeWithQueue([], async () => [{ kind: 'confirmHandover', confirmation }]);
+  await writeWithQueue([], async (tx) => {
+    // A second tap on "Confirm" must not queue a second confirmation.
+    const queued = await tx.objectStore('syncQueue').getAll();
+    const duplicate = queued.some(
+      (q) => q.op.kind === 'confirmHandover' && q.op.confirmation.handoverReference === confirmation.handoverReference,
+    );
+    return duplicate ? [] : [{ kind: 'confirmHandover', confirmation }];
+  });
 }
 
 // ---------------------------------------------------------------------------

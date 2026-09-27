@@ -1,7 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MaterialCategory, MaterialLot } from './data/models';
 import { resetLocalData } from './data/actions';
-import { lookupHandover, submitConfirmation } from './data/recyclerLookup';
+import {
+  checkFinalPrice,
+  getRecyclerIdentity,
+  loadIncoming,
+  lookupHandover,
+  saveRecyclerRates,
+  setRecyclerIdentity,
+  submitConfirmation,
+  type IncomingHandover,
+} from './data/recyclerLookup';
 import { startSyncTriggers } from './data/syncRunner';
 import { Header } from './components/Header';
 import { useCollector } from './hooks/useCollector';
@@ -16,17 +25,20 @@ import { detectPriceAnomaly } from './logic/anomaly';
 import { DEFAULT_ORIGIN } from './logic/geo';
 import { scoreRecyclers } from './logic/ranking';
 import { priceTrend, valueLot } from './logic/valuation';
-import { resetServer } from './services/api';
+import { datasetExportLinks, resetServer, usingRemoteBackend } from './services/api';
+import { transactionAnomaly } from './services/serverCore';
 import { Handover } from './screens/Handover';
 import { Home } from './screens/Home';
 import { Ledger } from './screens/Ledger';
 import { NewLot, type NewLotResult } from './screens/NewLot';
 import { PriceBoard } from './screens/PriceBoard';
 import { RecyclerConfirm } from './screens/RecyclerConfirm';
+import { RecyclerDesk } from './screens/RecyclerDesk';
 import { RecyclerMatch, type MatchRow } from './screens/RecyclerMatch';
 import { Safety } from './screens/Safety';
 import { Valuation } from './screens/Valuation';
 import { getPosition, type PositionResult } from './utils/geolocation';
+import { thumbnailDataUrl } from './utils/image';
 import { speak, spellCode } from './utils/speech';
 
 type LotStep = 'valuation' | 'match' | 'handover';
@@ -78,16 +90,69 @@ function Shell({ collectorId }: { collectorId: string }) {
         onToggleSimulatedOffline={sync.setSimulatedOffline}
       />
       {recyclerRole ? (
-        <RecyclerConfirm
-          online={sync.status.online}
-          onLookup={lookupHandover}
-          onConfirm={submitConfirmation}
-          onSwitchToCollector={() => switchRole(false)}
-        />
+        <RecyclerApp online={sync.status.online} onSwitchToCollector={() => switchRole(false)} />
       ) : (
         <CollectorApp collectorId={collectorId} onSwitchToRecycler={() => switchRole(true)} />
       )}
     </div>
+  );
+}
+
+/** Recycler side: confirm a code, see handovers addressed to you, publish rates. */
+function RecyclerApp({ online, onSwitchToCollector }: { online: boolean; onSwitchToCollector: () => void }) {
+  const { recyclers } = useRecyclers();
+  const [recyclerId, setRecyclerId] = useState<string>();
+  const [incoming, setIncoming] = useState<IncomingHandover[] | null>(null);
+  const [picked, setPicked] = useState<string>();
+  const authorized = useMemo(() => recyclers.filter((r) => r.authorizationStatus === 'authorized'), [recyclers]);
+  const me = authorized.find((r) => r.recyclerId === recyclerId);
+
+  useEffect(() => {
+    void getRecyclerIdentity().then(setRecyclerId);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    if (recyclerId) setIncoming(await loadIncoming(recyclerId));
+  }, [recyclerId]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh, online]);
+
+  return (
+    <>
+      <RecyclerConfirm
+        key={picked ?? 'manual'}
+        online={online}
+        initialCode={picked}
+        defaultConfirmedBy={me?.name}
+        onLookup={lookupHandover}
+        onCheckFinalPrice={checkFinalPrice}
+        onConfirm={async (c) => {
+          const outcome = await submitConfirmation(c);
+          void refresh();
+          return outcome;
+        }}
+        onSwitchToCollector={onSwitchToCollector}
+      />
+      <RecyclerDesk
+        recyclers={authorized}
+        recyclerId={recyclerId}
+        onSelectRecycler={(id) => {
+          setRecyclerId(id);
+          void setRecyclerIdentity(id);
+        }}
+        incoming={incoming}
+        onRefreshIncoming={() => void refresh()}
+        onPickHandover={(ref) => {
+          setPicked(ref);
+          window.scrollTo(0, 0);
+        }}
+        onSaveRates={(rates) => (recyclerId ? saveRecyclerRates(recyclerId, rates) : Promise.resolve())}
+        sharedServer={usingRemoteBackend()}
+        datasetLinks={datasetExportLinks()}
+      />
+    </>
   );
 }
 
@@ -339,13 +404,27 @@ function LotFlow({
       record={record}
       position={position}
       hasUnsyncedChanges={hasUnsyncedChanges}
+      priceFlag={
+        transaction.transactionStatus === 'confirmed' && transaction.finalPrice != null
+          ? transactionAnomaly(
+              transaction,
+              lot.approxWeightKg,
+              board[lot.category]?.marketRangeLow,
+              board[lot.category]?.marketRangeHigh,
+            )
+          : null
+      }
       onCreate={async (photo) => {
         if (!position) return;
+        const thumbnails = (await Promise.all([lot.imageBlob, photo].map((b) => thumbnailDataUrl(b)))).filter(
+          (x): x is string => !!x,
+        );
         await completeHandover({
           lotId: lot.lotId,
           photo,
           location: position.location,
           locationApproximate: position.approximate,
+          thumbnails,
         });
       }}
       onSpeakCode={(code) =>

@@ -13,7 +13,14 @@ export interface NewLotResult {
   imageBlob: Blob;
   category: MaterialCategory;
   approxWeightKg: number;
+  condition?: LotCondition;
+  sourceType?: LotSource;
 }
+
+export const LOT_CONDITIONS = ['working', 'broken', 'dismantled'] as const;
+export const LOT_SOURCES = ['household', 'shop', 'office', 'street'] as const;
+export type LotCondition = (typeof LOT_CONDITIONS)[number];
+export type LotSource = (typeof LOT_SOURCES)[number];
 
 interface Props {
   board: PriceBoard;
@@ -33,6 +40,8 @@ export function NewLot({ board, onComplete, onCancel }: Props) {
   const [photo, setPhoto] = useState<Blob>();
   const [category, setCategory] = useState<MaterialCategory>();
   const [weight, setWeight] = useState(5);
+  const [condition, setCondition] = useState<LotCondition>();
+  const [source, setSource] = useState<LotSource>();
   const [submitting, setSubmitting] = useState(false);
 
   const back = () => (step === 'photo' ? onCancel() : setStep(step === 'weight' ? 'category' : 'photo'));
@@ -77,6 +86,21 @@ export function NewLot({ board, onComplete, onCancel }: Props) {
             {CATEGORY_ICONS[category]} {t('step3Weight')}
           </h2>
           <WeightStepper value={weight} onChange={setWeight} unitLabel={t('kg')} />
+          {/* Optional, one tap each — feeds the Material dataset's condition / source type. */}
+          <ChipRow
+            label={t('conditionLabel')}
+            options={LOT_CONDITIONS}
+            selected={condition}
+            onSelect={setCondition}
+            render={(c) => `${LOT_ICONS[c]} ${t(`condition_${c}`)}`}
+          />
+          <ChipRow
+            label={t('sourceLabel')}
+            options={LOT_SOURCES}
+            selected={source}
+            onSelect={setSource}
+            render={(c) => `${LOT_ICONS[c]} ${t(`source_${c}`)}`}
+          />
           {board[category] && (
             <p className="live-estimate text-center text-lg">≈ ₹{formatNumber(valueLot(weight, board[category]))}</p>
           )}
@@ -90,6 +114,8 @@ export function NewLot({ board, onComplete, onCancel }: Props) {
                 imageBlob: photo ?? placeholderImage(CATEGORY_ICONS[category]),
                 category,
                 approxWeightKg: weight,
+                condition,
+                sourceType: source,
               });
             }}
           >
@@ -102,5 +128,40 @@ export function NewLot({ board, onComplete, onCancel }: Props) {
         ← {step === 'photo' ? t('cancel') : t('back')}
       </button>
     </section>
+  );
+}
+
+const LOT_ICONS: Record<LotCondition | LotSource, string> = {
+  working: '✅',
+  broken: '💔',
+  dismantled: '🔧',
+  household: '🏠',
+  shop: '🏪',
+  office: '🏢',
+  street: '🛣️',
+};
+
+function ChipRow<T extends string>(props: {
+  label: string;
+  options: readonly T[];
+  selected?: T;
+  onSelect: (v: T | undefined) => void;
+  render: (v: T) => string;
+}) {
+  return (
+    <fieldset className="chip-row flex flex-wrap items-center gap-2">
+      <legend className="text-sm">{props.label}</legend>
+      {props.options.map((o) => (
+        <button
+          key={o}
+          type="button"
+          className={`btn chip ${props.selected === o ? 'is-selected ring-2' : ''}`}
+          aria-pressed={props.selected === o}
+          onClick={() => props.onSelect(props.selected === o ? undefined : o)}
+        >
+          {props.render(o)}
+        </button>
+      ))}
+    </fieldset>
   );
 }

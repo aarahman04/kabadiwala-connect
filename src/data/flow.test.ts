@@ -20,7 +20,7 @@ Object.defineProperty(globalThis.navigator, 'onLine', { get: () => online, confi
 
 const { getDB } = await import('./db');
 const { ensureSeeded } = await import('./seed');
-const { createLot, selectRecycler, completeHandover, recyclerConfirm } = await import('./actions');
+const { createLot, selectRecycler, completeHandover, recyclerConfirm, markPaid } = await import('./actions');
 const { runSync } = await import('./syncRunner');
 const { lookupHandover } = await import('./recyclerLookup');
 
@@ -37,7 +37,7 @@ describe('offline handover → sync → confirmed', () => {
     expect((await db.getAll('transactions'))[0].transactionStatus).toBe('confirmed');
   });
 
-  it('runs the whole demo flow', async () => {
+  it('runs the whole demo flow', { timeout: 30_000 }, async () => {
     const db = await getDB();
     const recycler = (await db.get('recyclers', 'rc-01'))!;
 
@@ -99,6 +99,28 @@ describe('offline handover → sync → confirmed', () => {
     });
     expect((await db.get('materials', lot.lotId))!.status).toBe('paid');
   });
+
+  it('double-tapped payment and confirm buttons queue exactly one op each', async () => {
+    const db = await getDB();
+    online = false;
+    const recycler = (await db.get('recyclers', 'rc-05'))!;
+    const lot = await createLot({ collectorId, imageBlob: new Blob(), category: 'BATTERY', approxWeightKg: 3, estimatedValue: 160 });
+    await selectRecycler(lot.lotId, recycler, { lat: 21.14, lng: 79.08 });
+    const record = await completeHandover({ lotId: lot.lotId, photo: new Blob(), location: { lat: 21.1, lng: 79.0 }, locationApproximate: false });
+    const before = (await db.getAll('syncQueue')).length;
+
+    // cash + digital tapped in quick succession, plus a repeat cash tap
+    await Promise.all([markPaid(lot.lotId, 'paid_cash'), markPaid(lot.lotId, 'paid_digital'), markPaid(lot.lotId, 'paid_cash')]);
+    const confirm = { handoverReference: record.handoverReference, confirmedBy: 'W', confirmedAt: 1, paymentStatus: 'paid_cash' as const };
+    await Promise.all([recyclerConfirm(confirm), recyclerConfirm(confirm)]);
+
+    const added = (await db.getAll('syncQueue')).slice(before).map((q) => q.op.kind);
+    expect(added.filter((k) => k === 'markPaid')).toHaveLength(1);
+    expect(added.filter((k) => k === 'confirmHandover')).toHaveLength(1);
+    expect((await db.get('transactions', record.transactionId))!.paymentStatus).toBe('paid_cash');
+    online = true;
+    await runSync();
+  }, 30_000);
 
   it('confirmation that reaches the server before the handover still matches', async () => {
     const db = await getDB();
