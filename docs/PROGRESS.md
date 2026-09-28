@@ -1,6 +1,19 @@
 # Progress log & current state
 
-_Last updated: 2026-09-28 (night before the demo)._ Update this file at the end of every working session.
+_Last updated: 2026-09-28, after the completed visual design pass (SIH idea deadline 30 Sept 2026)._ Update this file at the end of every working session.
+
+## Start of next session: read this first
+
+- **Code and visual design are complete** (`a078fc0` contains the redesign). **Code is frozen for features**; deployment verification, physical-phone checks and pitch work remain. The owner authorized pushing the design and documentation to `origin/main` on 2026-09-28.
+- **Owner is doing now:**
+  1. deployment wiring: Railway backend variables, the optional classifier service, Vercel `VITE_API_URL`. Exact steps are below and in DEPLOYMENT.md;
+  2. physical-phone camera, Hindi/Marathi speech and installed-PWA airplane-mode checks; the local browser verification is recorded below.
+- **Likely next-session tasks:**
+  - review the completed design: build/typecheck green, 46 tests passed and one skipped, all three languages checked at 360 px, protected logic unchanged;
+  - verify the deployed pair (`/api/health` → `store: postgres`, two-phone demo);
+  - help with the pitch deck and script (the 4-step story; see "Pitch" below).
+- **Owner's Supabase state:** all `database/*.sql` has been run (they said so after the pickup commit). `05_materials.sql` changed afterwards (AI columns) and needs a re-run.
+- **Pitch** (agreed with the owner): tell ONE story in 4 steps: photo → fair price → authorized recycler → verified handover and earnings. Don't present every feature. Field research with 2 collectors + unit economics is the highest-value non-code item.
 
 ## Current state in one paragraph
 
@@ -19,7 +32,7 @@ A shared backend (`backend/`) gives real multi-device sync, so the collector and
 | `247ec79` | QA hardening in real Chrome: English voice fallback when no hi/mr TTS voice, GPS hard timeout (ignored prompt hung forever), sync-status text, cross-tab simulate-offline |
 | `f5fa01a` | Shared backend + recycler desk + dataset completeness: `serverCore.ts` shared rules, Node API, thumbnails, rate publishing, condition/source fields, final-price anomaly, duplicate-tap payment fix |
 | `9821e3f` | `backend/` folder (Railway root dir, committed bundle), relational Postgres tables, numbered `database/*.sql` for Supabase incl. `01_users.sql`, first-launch role chooser, `docs/` |
-| _latest_ | **Pickup flow**:
+| `a9b5ec8` | **Pickup flow**:
 - collector "Request pickup" with an optional phone;
 - recycler inbox: Accept/Decline → On my way → Arriving soon, with a map link and 📞;
 - status updates and system notifications on both phones, polling every 15 s while online;
@@ -27,20 +40,25 @@ A shared backend (`backend/`) gives real multi-device sync, so the collector and
 - `kc_transactions` pickup columns (ALTER-upgrades existing tables), pickups query 11b.
 
 Also fixed: a write made during an in-flight sync waited for the next trigger; `runSync` now runs one more pass. |
-| _latest_ | **AI photo classifier.** `classifier/` is a Python FastAPI service running **SigLIP 2 zero-shot** (`google/siglip2-base-patch16-224`).
+| `f7ea53f` | **AI photo classifier.** `classifier/` is a Python FastAPI service running **SigLIP 2 zero-shot** (`google/siglip2-base-patch16-224`).
 - Classes: 7 materials + Other, with confidence and top-2 margin rules.
 - `POST /api/classify` on the Node backend proxies to it (`CLASSIFIER_URL`).
 - The NewLot photo step suggests a category and the collector confirms. Offline or unsure, it falls back to the manual grid.
 - Lots store `aiSuggestion` (DB columns `ai_label/ai_confidence/ai_model`, query 11c). |
+| `2807225` | `docs/DESIGN-GUIDE.md` for the Codex design pass |
+| `a078fc0` | Completed collector/recycler visual redesign, offline fonts and SVG icons, responsive layouts and presentation regression check |
+| _this docs commit_ | Preserved the design brief in `docs/CODEX-DESIGN-PROMPT.md`, updated the completed-design handoff and remaining physical-phone checks |
 
 ## Verified (and how)
 
-- **Unit and integration tests:** 41 tests in total. `npm test` runs 40. The 38th checks that the backend survives a database restart and runs only against real Postgres (it needs `KC_TEST_DATABASE_URL`). What they cover:
+- **Unit and integration tests:** 47 tests in total: **46 passed, 1 skipped**. The skipped test checks that the backend survives a database restart and runs only against real Postgres (it needs `KC_TEST_DATABASE_URL`). What they cover:
   - the pure logic;
   - the full offline→sync flow on fake-indexeddb;
   - double-tap safety;
   - HTTP round-trips between two simulated devices, including the pickup state machine;
+  - the `/api/classify` proxy and the classifier label mapping;
   - the bundle-freshness check.
+  - translated placeholders, status/category/safety icons, accessible button states and progress cues.
 - **Real Chrome (headless, phone viewport), scripted click-throughs:**
   - the whole demo, including an **offline cold reload served by the service worker**;
   - GPS granted, denied, and a prompt that is never answered;
@@ -70,18 +88,28 @@ Also fixed: a write made during an in-flight sync waited for the next trigger; `
 
 ## Next steps (owner actions first)
 
-1. **Railway:** set the service's Root Directory to `backend`, and remove any custom build/start commands from the dashboard; `backend/railway.json` has them. Set these variables:
-   - `DATABASE_URL`: the Supabase **Session pooler** URI
+1. **Supabase:** re-run `database/05_materials.sql` (AI columns) and the new query blocks in `13_useful_queries.sql`. Then copy two things:
+   - the **Session pooler** URI;
+   - the **CA certificate** (Project Settings → Database → SSL Configuration).
+2. **Railway backend service:** set Root Directory = `backend` and remove any custom build/start commands. Set these variables, then Generate Domain and check that `/api/health` shows `"store":"postgres"`:
+   - `DATABASE_URL`: the pooler URI
    - `DATABASE_SSL=require`
-   - `DATABASE_CA`: the Supabase CA PEM
+   - `DATABASE_CA`: the PEM
    - `ADMIN_TOKEN`
    - `CORS_ORIGIN=https://kabadiwala-connect-olive-six.vercel.app`
+3. **Railway classifier service (optional):** new service from the same repo with Root Directory = `classifier`, and `CLASSIFIER_DTYPE=bfloat16` if RAM is under 2 GB. Generate a domain, and wait for `/api/health` to show `ok: true` (the first boot downloads 1.5 GB). Then set `CLASSIFIER_URL=https://<classifier-domain>` on the backend service.
+4. **Vercel:** set `VITE_API_URL=https://<backend-domain>`, then **Redeploy**.
+5. **Phones:**
+   - collector phone: "I collect scrap";
+   - recycler phone: "I run a recycling facility" → *Vidarbha E-Waste Solutions*, allow notifications, and it should show "Shared server";
+   - run the root README "Pickup variant";
+   - before presenting, reset with `curl -X POST https://<backend>/api/admin/reset -H "Authorization: Bearer <ADMIN_TOKEN>"`.
+6. **Design pass complete:** review `a078fc0` and `docs/DESIGN-GUIDE.md`; run the physical-phone checks before capturing presentation screenshots.
+7. Record the Railway domains in docs/README.md ("Live URLs").
 
-   Then check that `/api/health` shows `"store":"postgres"`. See DEPLOYMENT.md.
-2. **Supabase:** run `database/01…12` in order; the server would also create 02–12 on its own, but running them by hand shows the tables straight away. Use 13 for analysis.
-3. **Vercel:** set `VITE_API_URL=https://<railway-domain>` and **redeploy**.
-4. Run the two-phone demo script from the root README on two real phones.
-5. Record the Railway domain in docs/README.md.
+**Fallbacks for the live demo:**
+- no internet: the one-phone flow (Recycler view on the same phone) plus the "simulate offline" checkbox;
+- classifier down: pick the material manually, or run `uvicorn app:app` on the laptop, or show a screenshot.
 
 ## Open decisions (waiting on the owner)
 
@@ -89,7 +117,8 @@ Also fixed: a write made during an in-flight sync waited for the next trigger; `
   - The DB is ready: `01_users.sql` has `kc_profiles`, a role column, RLS and a signup trigger.
   - Not built yet: the Supabase client in the frontend, and JWT checks in the backend.
   - Reasoning is in DECISIONS.md (D-9).
-- **An AI material classifier:** the owner offered to source a model and dataset. The requirements are listed in DECISIONS.md (D-10).
+- ~~AI material classifier~~: **done** as SigLIP 2 zero-shot (D-14). Next would be fine-tuning on collector-labelled lots and a proper labelled evaluation set.
+- **Google sign-in:** the owner agreed to drop it for now; the role chooser covers the demo.
 
 ## Known gaps vs the problem statement
 
@@ -105,7 +134,7 @@ Also fixed: a write made during an in-flight sync waited for the next trigger; `
 
 ## Visual design pass — 2026-09-28 (Codex)
 
-Completed the collector and recycler visual redesign. Protected logic/data/services/hooks/backend/classifier/database files have no diff. Existing props, callbacks and QA class hooks remain. This is a local commit; no deployment or push was requested.
+Completed the collector and recycler visual redesign in `a078fc0`. Protected logic/data/services/hooks/backend/classifier/database files have no diff. Existing props, callbacks and QA class hooks remain. The owner subsequently authorized committing the documentation and pushing both commits to `origin/main`. The configured Vercel deployment follows pushes to `main`; deployment health still needs verification.
 
 ### Verification
 
